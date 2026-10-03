@@ -1,21 +1,7 @@
-import hashlib
-
 import pytest
 
+from conftest import FakeEmbedder
 from rag.ingest import ingest_folder, load_pages
-from rag.store import get_collection
-
-
-class FakeEmbedder:
-    """Deterministic 8-dimensional vectors derived from a hash of the text."""
-
-    def embed(self, texts):
-        return [[b / 255 for b in hashlib.sha256(t.encode()).digest()[:8]] for t in texts]
-
-
-@pytest.fixture
-def collection(tmp_path):
-    return get_collection(str(tmp_path / "chroma"), "test")
 
 
 @pytest.fixture

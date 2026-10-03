@@ -12,3 +12,9 @@ class Chunk(BaseModel):
     text: str            # exact slice of the page text
     char_start: int      # offsets of `text` within the page text
     char_end: int
+
+
+class RetrievedChunk(Chunk):
+    """A chunk returned for a question, with its similarity to the question."""
+
+    score: float         # cosine similarity, 1 = identical meaning

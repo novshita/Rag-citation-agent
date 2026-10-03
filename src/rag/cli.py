@@ -56,6 +56,7 @@ def _ingest(folder: str) -> int:
 
 def _search(question: str, top_k: int | None) -> int:
     from rag.embeddings import SentenceTransformerEmbedder
+    from rag.gate import check_retrieval
     from rag.retriever import retrieve
     from rag.store import get_collection
 
@@ -75,4 +76,8 @@ def _search(question: str, top_k: int | None) -> int:
         preview = " ".join(chunk.text.split())[:160]
         print(f"{rank}. [{chunk.score:.3f}] {chunk.chunk_id}  ({where})")
         print(f"   {preview}")
+
+    gate = check_retrieval(chunks, settings.min_score)
+    verdict = "pass" if gate.passed else f"fail ({gate.reason})"
+    print(f"\ngate: {verdict}  top={gate.top_score:.3f}  gap={gate.score_gap:.3f}")
     return 0

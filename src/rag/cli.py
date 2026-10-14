@@ -18,11 +18,17 @@ def main(argv: list[str] | None = None) -> int:
     search.add_argument("question")
     search.add_argument("-k", "--top-k", type=int, help="number of chunks (default: TOP_K)")
 
+    ask = commands.add_parser("ask", help="answer a question from the documents, with citations")
+    ask.add_argument("question")
+    ask.add_argument("-k", "--top-k", type=int, help="number of chunks (default: TOP_K)")
+
     args = parser.parse_args(argv)
     if args.command == "ingest":
         return _ingest(args.folder)
     if args.command == "search":
         return _search(args.question, args.top_k)
+    if args.command == "ask":
+        return _ask(args.question, args.top_k)
     return 1
 
 
@@ -80,4 +86,43 @@ def _search(question: str, top_k: int | None) -> int:
     gate = check_retrieval(chunks, settings.min_score)
     verdict = "pass" if gate.passed else f"fail ({gate.reason})"
     print(f"\ngate: {verdict}  top={gate.top_score:.3f}  gap={gate.score_gap:.3f}")
+    return 0
+
+
+def _ask(question: str, top_k: int | None) -> int:
+    from rag.embeddings import SentenceTransformerEmbedder
+    from rag.llm import AnthropicLLM
+    from rag.pipeline import answer_question
+    from rag.retriever import retrieve
+    from rag.store import get_collection
+
+    settings = load_settings()
+    if not settings.llm_model:
+        print("error: set LLM_MODEL (see .env.example)", file=sys.stderr)
+        return 1
+
+    chunks = retrieve(
+        question,
+        collection=get_collection(settings.chroma_dir, settings.collection),
+        embedder=SentenceTransformerEmbedder(settings.embedding_model),
+        top_k=top_k or settings.top_k,
+    )
+    result = answer_question(
+        question, chunks,
+        llm=AnthropicLLM(settings.llm_model),
+        min_score=settings.min_score,
+        max_retries=settings.max_retries,
+    )
+
+    answer = result.answer
+    print(f"{answer.answer}\n")
+    print(f"status:     {answer.status}")
+    print(f"confidence: {answer.confidence:.2f}")
+    if answer.reason:
+        print(f"reason:     {answer.reason}")
+    for number, claim in enumerate(answer.claims, start=1):
+        print(f"\n[{number}] {claim.text}")
+        for citation in claim.citations:
+            where = citation.doc_id if citation.page is None else f"{citation.doc_id}, page {citation.page}"
+            print(f'    - {where}: "{citation.quote}"')
     return 0

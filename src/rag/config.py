@@ -17,6 +17,7 @@ class Settings:
     chunk_overlap: int
     chroma_dir: str
     collection: str
+    log_db: str
 
 
 def load_settings() -> Settings:
@@ -31,4 +32,5 @@ def load_settings() -> Settings:
         chunk_overlap=int(os.getenv("CHUNK_OVERLAP", "20")),
         chroma_dir=os.getenv("CHROMA_DIR", "data/chroma"),
         collection=os.getenv("CHROMA_COLLECTION", "corpus"),
+        log_db=os.getenv("LOG_DB", "data/logs.sqlite"),
     )

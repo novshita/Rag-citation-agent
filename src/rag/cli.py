@@ -90,8 +90,11 @@ def _search(question: str, top_k: int | None) -> int:
 
 
 def _ask(question: str, top_k: int | None) -> int:
+    import time
+
     from rag.embeddings import SentenceTransformerEmbedder
     from rag.llm import AnthropicLLM
+    from rag.logger import connect, log_query
     from rag.pipeline import answer_question
     from rag.retriever import retrieve
     from rag.store import get_collection
@@ -101,6 +104,7 @@ def _ask(question: str, top_k: int | None) -> int:
         print("error: set LLM_MODEL (see .env.example)", file=sys.stderr)
         return 1
 
+    started = time.perf_counter()
     chunks = retrieve(
         question,
         collection=get_collection(settings.chroma_dir, settings.collection),
@@ -113,6 +117,8 @@ def _ask(question: str, top_k: int | None) -> int:
         min_score=settings.min_score,
         max_retries=settings.max_retries,
     )
+    latency_ms = int((time.perf_counter() - started) * 1000)
+    log_query(connect(settings.log_db), question, result, latency_ms)
 
     answer = result.answer
     print(f"{answer.answer}\n")

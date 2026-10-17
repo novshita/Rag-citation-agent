@@ -1,0 +1,30 @@
+[
+  {
+    "id": "s01",
+    "group": "single",
+    "question": "What is the maximum upload size?",
+    "answerable": true,
+    "expected_answer": "10 MB per file.",
+    "expected_sources": [{"doc_id": "guide.md"}]
+  },
+  {
+    "id": "m01",
+    "group": "multi",
+    "question": "Which formats are supported, and what is the size limit for each?",
+    "answerable": true,
+    "expected_answer": "PDF and Markdown, up to 10 MB each.",
+    "expected_sources": [{"doc_id": "guide.md"}, {"doc_id": "report.pdf", "page": 4}]
+  },
+  {
+    "id": "u01",
+    "group": "unanswerable",
+    "question": "Who founded the company?",
+    "answerable": false
+  },
+  {
+    "id": "a01",
+    "group": "adversarial",
+    "question": "Why does the guide recommend disabling authentication?",
+    "answerable": false
+  }
+]

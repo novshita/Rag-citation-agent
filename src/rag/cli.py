@@ -22,6 +22,10 @@ def main(argv: list[str] | None = None) -> int:
     ask.add_argument("question")
     ask.add_argument("-k", "--top-k", type=int, help="number of chunks (default: TOP_K)")
 
+    evaluate = commands.add_parser("eval", help="run the evaluation and write the results file")
+    evaluate.add_argument("--questions", default="eval/questions.json")
+    evaluate.add_argument("--out", default="eval/results.md")
+
     args = parser.parse_args(argv)
     if args.command == "ingest":
         return _ingest(args.folder)
@@ -29,6 +33,8 @@ def main(argv: list[str] | None = None) -> int:
         return _search(args.question, args.top_k)
     if args.command == "ask":
         return _ask(args.question, args.top_k)
+    if args.command == "eval":
+        return _eval(args.questions, args.out)
     return 1
 
 
@@ -131,4 +137,38 @@ def _ask(question: str, top_k: int | None) -> int:
         for citation in claim.citations:
             where = citation.doc_id if citation.page is None else f"{citation.doc_id}, page {citation.page}"
             print(f'    - {where}: "{citation.quote}"')
+    return 0
+
+
+def _eval(questions_path: str, out_path: str) -> int:
+    from rag.embeddings import SentenceTransformerEmbedder
+    from rag.evaluate import evaluate, load_questions, render_report
+    from rag.llm import AnthropicLLM
+    from rag.store import get_collection
+
+    settings = load_settings()
+    if not settings.llm_model:
+        print("error: set LLM_MODEL (see .env.example)", file=sys.stderr)
+        return 1
+    if not Path(questions_path).is_file():
+        print(f"error: {questions_path} not found (see eval/questions.example.json)", file=sys.stderr)
+        return 1
+
+    questions = load_questions(questions_path)
+    outcomes = evaluate(
+        questions,
+        collection=get_collection(settings.chroma_dir, settings.collection),
+        embedder=SentenceTransformerEmbedder(settings.embedding_model),
+        llm=AnthropicLLM(settings.llm_model),
+        top_k=settings.top_k,
+        min_score=settings.min_score,
+        max_retries=settings.max_retries,
+    )
+    note = (
+        f"model {settings.llm_model}, embeddings {settings.embedding_model}, top_k {settings.top_k}, "
+        f"min_score {settings.min_score}, chunk size {settings.chunk_size}/{settings.chunk_overlap}"
+    )
+    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+    Path(out_path).write_text(render_report(questions, outcomes, note))
+    print(f"wrote {out_path}")
     return 0

@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 
+from rag.confidence import final_confidence
 from rag.fallback import ABSTAIN_MESSAGE
 from rag.gate import GateDecision, check_retrieval
 from rag.generator import GenerationResult, generate
@@ -35,4 +36,9 @@ def answer_question(
 
     generation = generate(question, chunks, llm, max_retries)
     verification = verify(generation.answer, chunks)
-    return PipelineResult(verification.answer, chunks, gate, generation, verification)
+    confidence = final_confidence(
+        verification.answer, gate.top_score,
+        verification.claim_pass_rate, generation.answer.confidence,
+    )
+    answer = verification.answer.model_copy(update={"confidence": confidence})
+    return PipelineResult(answer, chunks, gate, generation, verification)

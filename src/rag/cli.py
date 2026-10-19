@@ -26,6 +26,16 @@ def main(argv: list[str] | None = None) -> int:
     evaluate.add_argument("--questions", default="eval/questions.json")
     evaluate.add_argument("--out", default="eval/results.md")
 
+    tune = commands.add_parser("tune", help="suggest MIN_SCORE from the dev questions (no LLM calls)")
+    tune.add_argument("--questions", default="eval/questions.json")
+
+    ablate = commands.add_parser("ablate", help="compare top-k / chunk-size settings on the full system")
+    ablate.add_argument("--questions", default="eval/questions.json")
+    ablate.add_argument("--top-k", default="3,5,8", help="comma-separated, e.g. 3,5,8")
+    ablate.add_argument("--chunk-size", help="comma-separated words, e.g. 100,150,300 (re-ingests the corpus)")
+    ablate.add_argument("--corpus", default="data/raw", help="folder to ingest for each chunk size")
+    ablate.add_argument("--out", default="eval/ablation.md")
+
     args = parser.parse_args(argv)
     if args.command == "ingest":
         return _ingest(args.folder)
@@ -35,6 +45,10 @@ def main(argv: list[str] | None = None) -> int:
         return _ask(args.question, args.top_k)
     if args.command == "eval":
         return _eval(args.questions, args.out)
+    if args.command == "tune":
+        return _tune(args.questions)
+    if args.command == "ablate":
+        return _ablate(args)
     return 1
 
 
@@ -154,7 +168,10 @@ def _eval(questions_path: str, out_path: str) -> int:
         print(f"error: {questions_path} not found (see eval/questions.example.json)", file=sys.stderr)
         return 1
 
-    questions = load_questions(questions_path)
+    questions = [q for q in load_questions(questions_path) if q.split == "test"]
+    if not questions:
+        print("error: no test-split questions (dev questions are only used by `tune`)", file=sys.stderr)
+        return 1
     outcomes = evaluate(
         questions,
         collection=get_collection(settings.chroma_dir, settings.collection),
@@ -171,4 +188,84 @@ def _eval(questions_path: str, out_path: str) -> int:
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     Path(out_path).write_text(render_report(questions, outcomes, note))
     print(f"wrote {out_path}")
+    return 0
+
+
+def _tune(questions_path: str) -> int:
+    from rag.embeddings import SentenceTransformerEmbedder
+    from rag.evaluate import load_questions
+    from rag.store import get_collection
+    from rag.tune import render, sweep, top_scores
+
+    settings = load_settings()
+    if not Path(questions_path).is_file():
+        print(f"error: {questions_path} not found (see eval/questions.example.json)", file=sys.stderr)
+        return 1
+    dev = [q for q in load_questions(questions_path) if q.split == "dev"]
+    scored = top_scores(
+        dev,
+        collection=get_collection(settings.chroma_dir, settings.collection),
+        embedder=SentenceTransformerEmbedder(settings.embedding_model),
+        top_k=settings.top_k,
+    )
+    if scored and not any(score for _, score in scored):
+        print("error: nothing was retrieved for any dev question (has the corpus been ingested?)", file=sys.stderr)
+        return 1
+    try:
+        result = sweep(scored)
+    except ValueError as error:
+        print(f'error: {error}. Mark some questions with "split": "dev".', file=sys.stderr)
+        return 1
+    print(render(result, sum(q.answerable for q in dev), sum(not q.answerable for q in dev)))
+    return 0
+
+
+def _ablate(args) -> int:
+    from rag.ablation import Variant, render_ablation, run_ablation
+    from rag.embeddings import SentenceTransformerEmbedder
+    from rag.evaluate import load_questions
+    from rag.ingest import ingest_folder
+    from rag.llm import AnthropicLLM
+    from rag.store import get_collection
+
+    settings = load_settings()
+    if not settings.llm_model:
+        print("error: set LLM_MODEL (see .env.example)", file=sys.stderr)
+        return 1
+    if not Path(args.questions).is_file():
+        print(f"error: {args.questions} not found", file=sys.stderr)
+        return 1
+
+    try:
+        top_ks = [int(k) for k in args.top_k.split(",")]
+        sizes = [int(n) for n in args.chunk_size.split(",")] if args.chunk_size else [settings.chunk_size]
+    except ValueError:
+        print("error: --top-k and --chunk-size take comma-separated integers", file=sys.stderr)
+        return 1
+    if args.chunk_size and not Path(args.corpus).is_dir():
+        print(f"error: {args.corpus} is not a folder", file=sys.stderr)
+        return 1
+
+    embedder = SentenceTransformerEmbedder(settings.embedding_model)
+    variants = []
+    for size in sizes:
+        if size == settings.chunk_size:
+            collection = get_collection(settings.chroma_dir, settings.collection)
+        else:
+            collection = get_collection(settings.chroma_dir, f"{settings.collection}-chunk{size}")
+            overlap = round(size * settings.chunk_overlap / settings.chunk_size)
+            ingest_folder(args.corpus, collection=collection, embedder=embedder,
+                          chunk_size=size, chunk_overlap=overlap)
+        for k in top_ks:
+            variants.append(Variant(f"chunk {size}, top-k {k}", collection, k))
+
+    questions = [q for q in load_questions(args.questions) if q.split == "test"]
+    rows = run_ablation(
+        questions, variants, embedder=embedder, llm=AnthropicLLM(settings.llm_model),
+        min_score=settings.min_score, max_retries=settings.max_retries,
+    )
+    note = f"{len(questions)} test questions, model {settings.llm_model}, min_score {settings.min_score}."
+    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+    Path(args.out).write_text(render_ablation(rows, note))
+    print(f"wrote {args.out}")
     return 0

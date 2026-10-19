@@ -50,6 +50,7 @@ class Question(BaseModel):
     group: Literal["single", "multi", "unanswerable", "adversarial"]
     question: str
     answerable: bool
+    split: Literal["dev", "test"] = "test"   # dev questions tune MIN_SCORE; eval runs on test only
     expected_answer: str | None = None
     expected_sources: list[Source] = Field(default_factory=list)
 

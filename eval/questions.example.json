@@ -5,7 +5,12 @@
     "question": "What is the maximum upload size?",
     "answerable": true,
     "expected_answer": "10 MB per file.",
-    "expected_sources": [{"doc_id": "guide.md"}]
+    "expected_sources": [
+      {
+        "doc_id": "guide.md"
+      }
+    ],
+    "split": "dev"
   },
   {
     "id": "m01",
@@ -13,13 +18,22 @@
     "question": "Which formats are supported, and what is the size limit for each?",
     "answerable": true,
     "expected_answer": "PDF and Markdown, up to 10 MB each.",
-    "expected_sources": [{"doc_id": "guide.md"}, {"doc_id": "report.pdf", "page": 4}]
+    "expected_sources": [
+      {
+        "doc_id": "guide.md"
+      },
+      {
+        "doc_id": "report.pdf",
+        "page": 4
+      }
+    ]
   },
   {
     "id": "u01",
     "group": "unanswerable",
     "question": "Who founded the company?",
-    "answerable": false
+    "answerable": false,
+    "split": "dev"
   },
   {
     "id": "a01",

@@ -41,4 +41,6 @@ def answer_question(
         verification.claim_pass_rate, generation.answer.confidence,
     )
     answer = verification.answer.model_copy(update={"confidence": confidence})
+    if answer.status == "abstained" and not answer.answer.strip():
+        answer = answer.model_copy(update={"answer": ABSTAIN_MESSAGE})
     return PipelineResult(answer, chunks, gate, generation, verification)

@@ -98,3 +98,12 @@ def test_pipeline_returns_verified_answer():
     result = answer_question("q", [chunk()], FakeLLM(answered_json()), min_score=0.3, max_retries=2)
     assert result.answer.status == "answered"
     assert result.verification.claim_pass_rate == 1.0
+
+
+def test_model_abstention_with_blank_answer_gets_the_standard_message():
+    blank = json.dumps({"status": "abstained", "answer": "", "claims": [],
+                        "confidence": 0.0, "reason": "Not in the context."})
+    result = answer_question("q", [chunk()], FakeLLM(blank), 0.3, 2)
+
+    assert result.answer.status == "abstained"
+    assert result.answer.answer == "The provided documents do not contain this information."

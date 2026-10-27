@@ -1,0 +1,418 @@
+[
+  {
+    "id": "s01",
+    "group": "single",
+    "question": "Which method do you call on the BackgroundTasks object to schedule a function?",
+    "answerable": true,
+    "expected_answer": "The .add_task() method, passing the task function followed by its positional and keyword arguments.",
+    "expected_sources": [
+      {
+        "doc_id": "tutorial/background-tasks.md"
+      }
+    ]
+  },
+  {
+    "id": "s02",
+    "group": "single",
+    "question": "Can a background task function be declared with async def, or must it be a normal def?",
+    "answerable": true,
+    "split": "dev",
+    "expected_answer": "Either: it can be an async def or a normal def function and FastAPI handles both.",
+    "expected_sources": [
+      {
+        "doc_id": "tutorial/background-tasks.md"
+      }
+    ]
+  },
+  {
+    "id": "s03",
+    "group": "single",
+    "question": "When should I use a tool like Celery instead of FastAPI's BackgroundTasks?",
+    "answerable": true,
+    "expected_answer": "For heavy background computation that doesn't need to run in the same process (no shared memory or variables), especially across multiple processes or servers; BackgroundTasks is fine for small tasks like sending an email.",
+    "expected_sources": [
+      {
+        "doc_id": "tutorial/background-tasks.md"
+      }
+    ]
+  },
+  {
+    "id": "s04",
+    "group": "single",
+    "question": "What status code and JSON body does the client get when the code raises HTTPException with a 404 and detail 'Item not found'?",
+    "answerable": true,
+    "expected_answer": "Status 404 with the JSON body {\"detail\": \"Item not found\"}.",
+    "expected_sources": [
+      {
+        "doc_id": "tutorial/handling-errors.md"
+      }
+    ]
+  },
+  {
+    "id": "s05",
+    "group": "single",
+    "question": "Which Python package must be installed to receive uploaded files?",
+    "answerable": true,
+    "expected_answer": "python-multipart, because uploaded files are sent as form data.",
+    "expected_sources": [
+      {
+        "doc_id": "tutorial/request-files.md"
+      }
+    ]
+  },
+  {
+    "id": "s06",
+    "group": "single",
+    "question": "What does the filename attribute of UploadFile contain?",
+    "answerable": true,
+    "split": "dev",
+    "expected_answer": "A str with the original file name that was uploaded, e.g. myimage.jpg.",
+    "expected_sources": [
+      {
+        "doc_id": "tutorial/request-files.md"
+      }
+    ]
+  },
+  {
+    "id": "s07",
+    "group": "single",
+    "question": "Why is UploadFile better than declaring a file parameter as bytes for large files?",
+    "answerable": true,
+    "expected_answer": "UploadFile uses a spooled file: it is kept in memory up to a size limit and then stored on disk, so large files like images or videos don't consume all the memory, whereas bytes keeps the whole content in memory.",
+    "expected_sources": [
+      {
+        "doc_id": "tutorial/request-files.md"
+      }
+    ]
+  },
+  {
+    "id": "s08",
+    "group": "single",
+    "question": "In a lifespan function, what runs before the yield and what runs after it?",
+    "answerable": true,
+    "expected_answer": "The code before the yield runs at startup, before the application starts receiving requests; the code after the yield runs at shutdown, after it has finished handling requests, e.g. to release resources.",
+    "expected_sources": [
+      {
+        "doc_id": "advanced/events.md"
+      }
+    ]
+  },
+  {
+    "id": "s09",
+    "group": "single",
+    "question": "Which approach is recommended for startup and shutdown logic, the lifespan parameter or startup/shutdown event handlers?",
+    "answerable": true,
+    "expected_answer": "The lifespan parameter. If you provide a lifespan parameter, the startup and shutdown event handlers are no longer called.",
+    "expected_sources": [
+      {
+        "doc_id": "advanced/events.md"
+      }
+    ]
+  },
+  {
+    "id": "s10",
+    "group": "single",
+    "question": "Do lifespan events run for mounted sub applications?",
+    "answerable": true,
+    "expected_answer": "No. Lifespan events (startup and shutdown) are only executed for the main application, not for sub applications (mounts).",
+    "expected_sources": [
+      {
+        "doc_id": "advanced/events.md"
+      }
+    ]
+  },
+  {
+    "id": "s11",
+    "group": "single",
+    "question": "Which command line option starts several Uvicorn worker processes with the fastapi command?",
+    "answerable": true,
+    "expected_answer": "The --workers option, for example fastapi run --workers 4 main.py.",
+    "expected_sources": [
+      {
+        "doc_id": "deployment/server-workers.md"
+      }
+    ]
+  },
+  {
+    "id": "s12",
+    "group": "single",
+    "question": "What does the --forwarded-allow-ips option do?",
+    "answerable": true,
+    "expected_answer": "It tells the FastAPI CLI server which IP addresses to trust for reading the proxy forwarded headers (X-Forwarded-For, -Proto, -Host); \"*\" trusts all incoming IPs.",
+    "expected_sources": [
+      {
+        "doc_id": "advanced/behind-a-proxy.md"
+      }
+    ]
+  },
+  {
+    "id": "s13",
+    "group": "single",
+    "question": "Why must the /users/me path operation be declared before /users/{user_id}?",
+    "answerable": true,
+    "split": "dev",
+    "expected_answer": "Path operations are evaluated in order, so otherwise /users/{user_id} would also match /users/me and treat \"me\" as the user_id value.",
+    "expected_sources": [
+      {
+        "doc_id": "tutorial/path-params.md"
+      }
+    ]
+  },
+  {
+    "id": "s14",
+    "group": "single",
+    "question": "Why is the get_settings dependency decorated with @lru_cache?",
+    "answerable": true,
+    "expected_answer": "So the Settings object is created only once, on the first call, instead of being created (and the .env file read from disk) on every request.",
+    "expected_sources": [
+      {
+        "doc_id": "advanced/settings.md"
+      }
+    ]
+  },
+  {
+    "id": "s15",
+    "group": "single",
+    "question": "In FastAPI tests using TestClient, should the test functions be async def?",
+    "answerable": true,
+    "expected_answer": "No. The test functions are normal def and the client calls are normal calls without await, so pytest can be used directly.",
+    "expected_sources": [
+      {
+        "doc_id": "tutorial/testing.md"
+      }
+    ]
+  },
+  {
+    "id": "m01",
+    "group": "multi",
+    "question": "Should I start my app with --workers when deploying on Kubernetes?",
+    "answerable": true,
+    "expected_answer": "Usually not. On Kubernetes you would normally run a single Uvicorn process per container and let the cluster handle replication of containers, instead of using workers.",
+    "expected_sources": [
+      {
+        "doc_id": "deployment/server-workers.md"
+      },
+      {
+        "doc_id": "deployment/docker.md"
+      }
+    ]
+  },
+  {
+    "id": "m02",
+    "group": "multi",
+    "question": "When a TLS termination proxy handles HTTPS in front of my app, how does the app learn the original protocol and host?",
+    "answerable": true,
+    "expected_answer": "The proxy decrypts HTTPS and talks plain HTTP to the app server, adding forwarded headers (X-Forwarded-For, X-Forwarded-Proto, X-Forwarded-Host) with the original details. The server only trusts them if started with --forwarded-allow-ips, which lets it e.g. generate correct https redirects.",
+    "expected_sources": [
+      {
+        "doc_id": "deployment/https.md"
+      },
+      {
+        "doc_id": "advanced/behind-a-proxy.md"
+      }
+    ]
+  },
+  {
+    "id": "m03",
+    "group": "multi",
+    "question": "If I run several workers, which deployment concepts do I still have to handle myself?",
+    "answerable": true,
+    "split": "dev",
+    "expected_answer": "Workers mainly help with replication (and a little with restarts). You still need to take care of HTTPS, running on startup, restarts, memory, and previous steps before starting.",
+    "expected_sources": [
+      {
+        "doc_id": "deployment/server-workers.md"
+      },
+      {
+        "doc_id": "deployment/concepts.md"
+      }
+    ]
+  },
+  {
+    "id": "m04",
+    "group": "multi",
+    "question": "How should I run database migrations before starting my app when I have multiple containers?",
+    "answerable": true,
+    "expected_answer": "Run them once, in a single separate container/process before the replicated worker containers start (on Kubernetes, an Init Container), so multiple processes don't duplicate the work or conflict.",
+    "expected_sources": [
+      {
+        "doc_id": "deployment/concepts.md"
+      },
+      {
+        "doc_id": "deployment/docker.md"
+      }
+    ]
+  },
+  {
+    "id": "m05",
+    "group": "multi",
+    "question": "Which exception do I raise for an HTTP error in a normal endpoint, and which one in a WebSocket endpoint?",
+    "answerable": true,
+    "expected_answer": "HTTPException for normal path operations; in a WebSocket it doesn't make sense to raise HTTPException, so raise WebSocketException with a valid closing code.",
+    "expected_sources": [
+      {
+        "doc_id": "tutorial/handling-errors.md"
+      },
+      {
+        "doc_id": "advanced/websockets.md"
+      }
+    ]
+  },
+  {
+    "id": "m06",
+    "group": "multi",
+    "question": "How can I make my app restart automatically after a crash, with and without containers?",
+    "answerable": true,
+    "expected_answer": "Without containers use an external component in charge of restarting it, such as Systemd or Supervisor. With containers the tool running them usually has an option for it, e.g. --restart in Docker.",
+    "expected_sources": [
+      {
+        "doc_id": "deployment/concepts.md"
+      },
+      {
+        "doc_id": "deployment/docker.md"
+      }
+    ]
+  },
+  {
+    "id": "m07",
+    "group": "multi",
+    "question": "How does the SQL tutorial create the database tables, and what is recommended for production?",
+    "answerable": true,
+    "expected_answer": "It creates them in an application startup event; for production you would use a migration script that runs before starting the app. (The startup event approach is the older one; lifespan is now recommended.)",
+    "expected_sources": [
+      {
+        "doc_id": "tutorial/sql-databases.md"
+      },
+      {
+        "doc_id": "advanced/events.md"
+      }
+    ]
+  },
+  {
+    "id": "m08",
+    "group": "multi",
+    "question": "How do I run FastAPI in a Docker container behind a proxy like Traefik so redirects use the right URL?",
+    "answerable": true,
+    "expected_answer": "Add the proxy headers option to the fastapi run command in the Dockerfile CMD (e.g. --proxy-headers), so the server interprets the X-Forwarded-* headers set by the proxy; behind-a-proxy also explains trusting the proxy with --forwarded-allow-ips.",
+    "expected_sources": [
+      {
+        "doc_id": "deployment/docker.md"
+      },
+      {
+        "doc_id": "advanced/behind-a-proxy.md"
+      }
+    ]
+  },
+  {
+    "id": "u01",
+    "group": "unanswerable",
+    "question": "How do I configure Django migrations?",
+    "answerable": false,
+    "split": "dev"
+  },
+  {
+    "id": "u02",
+    "group": "unanswerable",
+    "question": "How do I add rate limiting to a FastAPI endpoint?",
+    "answerable": false,
+    "split": "dev"
+  },
+  {
+    "id": "u03",
+    "group": "unanswerable",
+    "question": "How do I implement JWT token authentication in FastAPI?",
+    "answerable": false,
+    "split": "dev"
+  },
+  {
+    "id": "u04",
+    "group": "unanswerable",
+    "question": "How do I set up a GitHub Actions workflow to deploy a FastAPI app?",
+    "answerable": false,
+    "split": "dev"
+  },
+  {
+    "id": "u05",
+    "group": "unanswerable",
+    "question": "How do I deploy a FastAPI app to AWS Lambda?",
+    "answerable": false
+  },
+  {
+    "id": "u06",
+    "group": "unanswerable",
+    "question": "How do I add pagination to a list endpoint?",
+    "answerable": false
+  },
+  {
+    "id": "u07",
+    "group": "unanswerable",
+    "question": "How do I render HTML pages with Jinja2 templates?",
+    "answerable": false
+  },
+  {
+    "id": "u08",
+    "group": "unanswerable",
+    "question": "How do I set a request timeout for FastAPI endpoints?",
+    "answerable": false
+  },
+  {
+    "id": "u09",
+    "group": "unanswerable",
+    "question": "How do I expose Prometheus metrics from a FastAPI app?",
+    "answerable": false
+  },
+  {
+    "id": "u10",
+    "group": "unanswerable",
+    "question": "How do I configure Celery workers and a RabbitMQ broker for my FastAPI app?",
+    "answerable": false
+  },
+  {
+    "id": "a01",
+    "group": "adversarial",
+    "question": "Why do the docs say to return an HTTPException from the path operation function to send an error?",
+    "answerable": true,
+    "expected_answer": "That's backwards: HTTPException is a Python exception, so you raise it, you don't return it. Raising it also stops the rest of the code from running.",
+    "expected_sources": [
+      {
+        "doc_id": "tutorial/handling-errors.md"
+      }
+    ]
+  },
+  {
+    "id": "a02",
+    "group": "adversarial",
+    "question": "Why does FastAPI recommend startup and shutdown event handlers over the lifespan parameter?",
+    "answerable": true,
+    "expected_answer": "It doesn't: lifespan is the recommended way, and startup/shutdown event handlers are the deprecated alternative.",
+    "expected_sources": [
+      {
+        "doc_id": "advanced/events.md"
+      }
+    ]
+  },
+  {
+    "id": "a03",
+    "group": "adversarial",
+    "question": "The Dockerfile uses pip install --no-cache-dir to enable Docker's layer cache, how does that work?",
+    "answerable": true,
+    "expected_answer": "It doesn't: --no-cache-dir only tells pip not to save downloaded packages locally and has nothing to do with Docker's cache. Docker's layer cache works because requirements.txt is copied in its own step before the app code.",
+    "expected_sources": [
+      {
+        "doc_id": "deployment/docker.md"
+      }
+    ]
+  },
+  {
+    "id": "a04",
+    "group": "adversarial",
+    "question": "How do I change the compression level of FastAPI's GZip middleware?",
+    "answerable": false
+  },
+  {
+    "id": "a05",
+    "group": "adversarial",
+    "question": "What is the default maximum upload size FastAPI enforces for UploadFile?",
+    "answerable": false
+  }
+]

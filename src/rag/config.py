@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 
 @dataclass(frozen=True)
 class Settings:
+    llm_provider: str
     llm_model: str
     embedding_model: str
     top_k: int
@@ -23,6 +24,7 @@ class Settings:
 def load_settings() -> Settings:
     load_dotenv()
     return Settings(
+        llm_provider=os.getenv("LLM_PROVIDER", "gemini").lower(),
         llm_model=os.getenv("LLM_MODEL", ""),
         embedding_model=os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2"),
         top_k=int(os.getenv("TOP_K", "5")),

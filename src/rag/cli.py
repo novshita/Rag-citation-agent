@@ -1,6 +1,7 @@
 """Command-line entry point: `python -m rag <command>`."""
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -37,6 +38,19 @@ def main(argv: list[str] | None = None) -> int:
     ablate.add_argument("--out", default="eval/ablation.md")
 
     args = parser.parse_args(argv)
+    try:
+        return _run(args)
+    except Exception as error:
+        if os.getenv("RAG_DEBUG"):
+            raise
+        # Provider errors can be very long (API dumps); show the first line only.
+        message = (str(error).strip().splitlines() or [""])[0]
+        print(f"error: {type(error).__name__}: {message}", file=sys.stderr)
+        print("(set RAG_DEBUG=1 for the full traceback)", file=sys.stderr)
+        return 1
+
+
+def _run(args) -> int:
     if args.command == "ingest":
         return _ingest(args.folder)
     if args.command == "search":
@@ -113,7 +127,7 @@ def _ask(question: str, top_k: int | None) -> int:
     import time
 
     from rag.embeddings import SentenceTransformerEmbedder
-    from rag.llm import AnthropicLLM
+    from rag.llm import make_llm
     from rag.logger import connect, log_query
     from rag.pipeline import answer_question
     from rag.retriever import retrieve
@@ -133,7 +147,7 @@ def _ask(question: str, top_k: int | None) -> int:
     )
     result = answer_question(
         question, chunks,
-        llm=AnthropicLLM(settings.llm_model),
+        llm=make_llm(settings.llm_provider, settings.llm_model),
         min_score=settings.min_score,
         max_retries=settings.max_retries,
     )
@@ -157,7 +171,7 @@ def _ask(question: str, top_k: int | None) -> int:
 def _eval(questions_path: str, out_path: str) -> int:
     from rag.embeddings import SentenceTransformerEmbedder
     from rag.evaluate import evaluate, load_questions, render_report
-    from rag.llm import AnthropicLLM
+    from rag.llm import make_llm
     from rag.store import get_collection
 
     settings = load_settings()
@@ -176,7 +190,7 @@ def _eval(questions_path: str, out_path: str) -> int:
         questions,
         collection=get_collection(settings.chroma_dir, settings.collection),
         embedder=SentenceTransformerEmbedder(settings.embedding_model),
-        llm=AnthropicLLM(settings.llm_model),
+        llm=make_llm(settings.llm_provider, settings.llm_model),
         top_k=settings.top_k,
         min_score=settings.min_score,
         max_retries=settings.max_retries,
@@ -225,7 +239,7 @@ def _ablate(args) -> int:
     from rag.embeddings import SentenceTransformerEmbedder
     from rag.evaluate import load_questions
     from rag.ingest import ingest_folder
-    from rag.llm import AnthropicLLM
+    from rag.llm import make_llm
     from rag.store import get_collection
 
     settings = load_settings()
@@ -261,7 +275,7 @@ def _ablate(args) -> int:
 
     questions = [q for q in load_questions(args.questions) if q.split == "test"]
     rows = run_ablation(
-        questions, variants, embedder=embedder, llm=AnthropicLLM(settings.llm_model),
+        questions, variants, embedder=embedder, llm=make_llm(settings.llm_provider, settings.llm_model),
         min_score=settings.min_score, max_retries=settings.max_retries,
     )
     note = f"{len(questions)} test questions, model {settings.llm_model}, min_score {settings.min_score}."

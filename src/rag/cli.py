@@ -36,6 +36,8 @@ def main(argv: list[str] | None = None) -> int:
     ablate.add_argument("--chunk-size", help="comma-separated words, e.g. 100,150,300 (re-ingests the corpus)")
     ablate.add_argument("--corpus", default="data/raw", help="folder to ingest for each chunk size")
     ablate.add_argument("--out", default="eval/ablation.md")
+    ablate.add_argument("--rerank", action="store_true", help="also run every variant with the cross-encoder reranker")
+    ablate.add_argument("--retrieval-only", action="store_true", help="compare retrieval hit rate only (no LLM calls)")
 
     args = parser.parse_args(argv)
     try:
@@ -97,6 +99,7 @@ def _ingest(folder: str) -> int:
 def _search(question: str, top_k: int | None) -> int:
     from rag.embeddings import SentenceTransformerEmbedder
     from rag.gate import check_retrieval
+    from rag.rerank import make_reranker
     from rag.retriever import retrieve
     from rag.store import get_collection
 
@@ -106,6 +109,8 @@ def _search(question: str, top_k: int | None) -> int:
         collection=get_collection(settings.chroma_dir, settings.collection),
         embedder=SentenceTransformerEmbedder(settings.embedding_model),
         top_k=top_k or settings.top_k,
+        reranker=make_reranker(settings),
+        candidates=settings.rerank_candidates,
     )
     if not chunks:
         print("no chunks found (has the corpus been ingested?)")
@@ -130,6 +135,7 @@ def _ask(question: str, top_k: int | None) -> int:
     from rag.llm import make_llm
     from rag.logger import connect, log_query
     from rag.pipeline import answer_question
+    from rag.rerank import make_reranker
     from rag.retriever import retrieve
     from rag.store import get_collection
 
@@ -144,6 +150,8 @@ def _ask(question: str, top_k: int | None) -> int:
         collection=get_collection(settings.chroma_dir, settings.collection),
         embedder=SentenceTransformerEmbedder(settings.embedding_model),
         top_k=top_k or settings.top_k,
+        reranker=make_reranker(settings),
+        candidates=settings.rerank_candidates,
     )
     result = answer_question(
         question, chunks,
@@ -171,6 +179,7 @@ def _ask(question: str, top_k: int | None) -> int:
 def _eval(questions_path: str, out_path: str) -> int:
     from rag.embeddings import SentenceTransformerEmbedder
     from rag.evaluate import evaluate, load_questions, render_report
+    from rag.rerank import make_reranker
     from rag.llm import make_llm
     from rag.store import get_collection
 
@@ -194,10 +203,13 @@ def _eval(questions_path: str, out_path: str) -> int:
         top_k=settings.top_k,
         min_score=settings.min_score,
         max_retries=settings.max_retries,
+        reranker=make_reranker(settings),
+        candidates=settings.rerank_candidates,
     )
     note = (
         f"model {settings.llm_model}, embeddings {settings.embedding_model}, top_k {settings.top_k}, "
-        f"min_score {settings.min_score}, chunk size {settings.chunk_size}/{settings.chunk_overlap}"
+        f"min_score {settings.min_score}, chunk size {settings.chunk_size}/{settings.chunk_overlap}, "
+        f"reranker {settings.rerank_model if settings.rerank else 'off'}"
     )
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     Path(out_path).write_text(render_report(questions, outcomes, note))
@@ -209,6 +221,7 @@ def _tune(questions_path: str) -> int:
     from rag.embeddings import SentenceTransformerEmbedder
     from rag.evaluate import load_questions
     from rag.store import get_collection
+    from rag.rerank import make_reranker
     from rag.tune import render, sweep, top_scores
 
     settings = load_settings()
@@ -221,6 +234,8 @@ def _tune(questions_path: str) -> int:
         collection=get_collection(settings.chroma_dir, settings.collection),
         embedder=SentenceTransformerEmbedder(settings.embedding_model),
         top_k=settings.top_k,
+        reranker=make_reranker(settings),
+        candidates=settings.rerank_candidates,
     )
     if scored and not any(score for _, score in scored):
         print("error: nothing was retrieved for any dev question (has the corpus been ingested?)", file=sys.stderr)
@@ -235,15 +250,18 @@ def _tune(questions_path: str) -> int:
 
 
 def _ablate(args) -> int:
-    from rag.ablation import Variant, render_ablation, run_ablation
+    from rag.ablation import (
+        Variant, render_ablation, render_hit_rates, retrieval_hit_rates, run_ablation,
+    )
     from rag.embeddings import SentenceTransformerEmbedder
     from rag.evaluate import load_questions
     from rag.ingest import ingest_folder
     from rag.llm import make_llm
+    from rag.rerank import CrossEncoderReranker
     from rag.store import get_collection
 
     settings = load_settings()
-    if not settings.llm_model:
+    if not args.retrieval_only and not settings.llm_model:
         print("error: set LLM_MODEL (see .env.example)", file=sys.stderr)
         return 1
     if not Path(args.questions).is_file():
@@ -261,6 +279,7 @@ def _ablate(args) -> int:
         return 1
 
     embedder = SentenceTransformerEmbedder(settings.embedding_model)
+    reranker = CrossEncoderReranker(settings.rerank_model) if args.rerank else None
     variants = []
     for size in sizes:
         if size == settings.chunk_size:
@@ -272,8 +291,23 @@ def _ablate(args) -> int:
                           chunk_size=size, chunk_overlap=overlap)
         for k in top_ks:
             variants.append(Variant(f"chunk {size}, top-k {k}", collection, k))
+            if reranker:
+                variants.append(Variant(
+                    f"chunk {size}, top-k {k}, reranked", collection, k,
+                    reranker=reranker, candidates=settings.rerank_candidates,
+                ))
 
     questions = [q for q in load_questions(args.questions) if q.split == "test"]
+    if args.retrieval_only:
+        hit_rows = retrieval_hit_rates(questions, variants, embedder=embedder)
+        note = f"{sum(q.answerable for q in questions)} answerable test questions; no LLM calls."
+        report = render_hit_rates(hit_rows, note)
+        Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.out).write_text(report)
+        print(report)
+        print(f"wrote {args.out}")
+        return 0
+
     rows = run_ablation(
         questions, variants, embedder=embedder, llm=make_llm(settings.llm_provider, settings.llm_model),
         min_score=settings.min_score, max_retries=settings.max_retries,

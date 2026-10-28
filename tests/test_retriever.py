@@ -73,3 +73,35 @@ def test_blank_question_returns_nothing(filled):
 def test_rejects_non_positive_top_k(filled):
     with pytest.raises(ValueError):
         ask(filled, "apple", top_k=0)
+
+
+class PreferShortest:
+    """Fake reranker: shorter passages are 'more relevant', whatever the question."""
+
+    def __init__(self):
+        self.seen = []
+
+    def score(self, question, texts):
+        self.seen.append(list(texts))
+        return [-len(t) for t in texts]
+
+
+def test_reranker_reorders_candidates_and_keeps_vector_scores(filled):
+    plain = retrieve("apple", filled, KeywordEmbedder(), top_k=1)
+    reranker = PreferShortest()
+    reranked = retrieve("apple", filled, KeywordEmbedder(), top_k=1, reranker=reranker, candidates=3)
+
+    assert plain[0].doc_id == "apple.md"
+    assert reranked[0].doc_id != plain[0].doc_id             # the reranker changed the winner
+    assert len(reranker.seen[0]) == 3                          # it saw all the candidates
+    by_id = {c.chunk_id: c.score for c in retrieve("apple", filled, KeywordEmbedder(), top_k=3)}
+    assert reranked[0].score == pytest.approx(by_id[reranked[0].chunk_id])   # cosine score unchanged
+
+
+def test_reranker_limits_results_to_top_k(filled):
+    results = retrieve("apple", filled, KeywordEmbedder(), top_k=2, reranker=PreferShortest(), candidates=10)
+    assert len(results) == 2
+
+
+def test_without_reranker_candidates_setting_is_ignored(filled):
+    assert len(retrieve("apple", filled, KeywordEmbedder(), top_k=2, candidates=10)) == 2

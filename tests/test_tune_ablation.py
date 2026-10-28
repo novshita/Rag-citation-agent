@@ -69,3 +69,31 @@ def test_ablation_compares_variants(collection, tmp_path):
     assert all(m.correctness == 1.0 for _, m in rows)
     report = render_ablation(rows, "note")
     assert "| top-k 1 | 100% | 100% |" in report
+
+
+def test_retrieval_hit_rates_compare_variants_without_an_llm(collection, tmp_path):
+    from rag.ablation import render_hit_rates, retrieval_hit_rates
+
+    class PreferLongest:
+        def score(self, question, texts):
+            return [len(t) for t in texts]
+
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "apple.md").write_text("apple apple apple orchard notes")
+    (docs / "banana.md").write_text("banana banana plantation notes for everyone to read")
+    ingest_folder(str(docs), collection, KeywordEmbedder(), chunk_size=50, chunk_overlap=5)
+    questions = [
+        Question(id="s1", group="single", question="apple", answerable=True,
+                 expected_answer="a", expected_sources=[{"doc_id": "apple.md"}]),
+        Question(id="u1", group="unanswerable", question="durian", answerable=False),
+    ]
+    variants = [
+        Variant("plain", collection, 1),
+        Variant("reranked", collection, 1, reranker=PreferLongest(), candidates=2),
+    ]
+
+    rows = retrieval_hit_rates(questions, variants, embedder=KeywordEmbedder())
+
+    assert [rate for _, rate in rows] == [1.0, 0.0]   # the fake reranker picks the wrong passage
+    assert "| plain | 100% |" in render_hit_rates(rows, "note")

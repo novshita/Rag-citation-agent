@@ -32,7 +32,7 @@ from pydantic import BaseModel, Field
 from rag.generator import generate
 from rag.llm import LLM
 from rag.pipeline import answer_question
-from rag.retriever import retrieve
+from rag.retriever import DEFAULT_CANDIDATES, retrieve
 from rag.schemas import RetrievedChunk
 from rag.verifier import verify
 
@@ -104,7 +104,7 @@ def run_naive(q: Question, chunks: list[RetrievedChunk], llm: LLM, max_retries: 
     checks = verify(answer, chunks)   # measured only; the answer is returned as the model wrote it
     return Outcome(
         q, "naive", abstained=answer.status == "abstained", answer_text=answer.answer,
-        hit=_hit(q, chunks),
+        hit=retrieval_hit(q, chunks),
         citations_total=len(checks.checks),
         citations_valid=sum(c.passed for c in checks.checks),
         unsupported_claims=checks.claims_total - checks.claims_passed,
@@ -122,14 +122,14 @@ def run_full(
     tokens = result.generation.input_tokens + result.generation.output_tokens if result.generation else 0
     return Outcome(
         q, "full", abstained=answer.status == "abstained", answer_text=answer.answer,
-        hit=_hit(q, chunks),
+        hit=retrieval_hit(q, chunks),
         citations_total=len(checks), citations_valid=sum(c.passed for c in checks),
         unsupported_claims=0,   # verification removed them; they are not in the final answer
         latency_ms=_ms(started), tokens=tokens,
     )
 
 
-def _hit(q: Question, chunks: list[RetrievedChunk]) -> bool | None:
+def retrieval_hit(q: Question, chunks: list[RetrievedChunk]) -> bool | None:
     """Every expected source appears among the retrieved chunks. None for unanswerable questions."""
     if not q.answerable:
         return None
@@ -186,12 +186,15 @@ def evaluate(
     min_score: float,
     max_retries: int,
     systems: tuple[str, ...] = SYSTEMS,
+    reranker=None,
+    candidates: int = DEFAULT_CANDIDATES,
 ) -> list[Outcome]:
     judge_llm = judge_llm or llm
     outcomes: list[Outcome] = []
 
     for q in questions:
-        chunks = retrieve(q.question, collection=collection, embedder=embedder, top_k=top_k)
+        chunks = retrieve(q.question, collection=collection, embedder=embedder, top_k=top_k,
+                          reranker=reranker, candidates=candidates)
         for system in systems:
             if system == "baseline":
                 outcome = run_baseline(q, llm)

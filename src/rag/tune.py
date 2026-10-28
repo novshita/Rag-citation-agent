@@ -13,7 +13,7 @@ on, the numbers look better than they really are.
 from dataclasses import dataclass
 
 from rag.evaluate import Question
-from rag.retriever import retrieve
+from rag.retriever import DEFAULT_CANDIDATES, retrieve
 
 
 @dataclass(frozen=True)
@@ -40,10 +40,13 @@ class TuneResult:
         return self.unanswerable_max < self.answerable_min
 
 
-def top_scores(questions: list[Question], collection, embedder, top_k: int) -> list[tuple[Question, float]]:
+def top_scores(
+    questions: list[Question], collection, embedder, top_k: int, reranker=None, candidates: int = DEFAULT_CANDIDATES,
+) -> list[tuple[Question, float]]:
     scored = []
     for q in questions:
-        chunks = retrieve(q.question, collection=collection, embedder=embedder, top_k=top_k)
+        chunks = retrieve(q.question, collection=collection, embedder=embedder, top_k=top_k,
+                          reranker=reranker, candidates=candidates)
         scored.append((q, max((c.score for c in chunks), default=0.0)))
     return scored
 

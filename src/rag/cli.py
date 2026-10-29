@@ -26,6 +26,9 @@ def main(argv: list[str] | None = None) -> int:
     evaluate = commands.add_parser("eval", help="run the evaluation and write the results file")
     evaluate.add_argument("--questions", default="eval/questions.json")
     evaluate.add_argument("--out", default="eval/results.md")
+    evaluate.add_argument("--checkpoint", default="eval/.checkpoint.jsonl",
+                          help="where finished results are saved so an interrupted run can resume")
+    evaluate.add_argument("--fresh", action="store_true", help="ignore and delete any saved progress")
 
     tune = commands.add_parser("tune", help="suggest MIN_SCORE from the dev questions (no LLM calls)")
     tune.add_argument("--questions", default="eval/questions.json")
@@ -60,7 +63,7 @@ def _run(args) -> int:
     if args.command == "ask":
         return _ask(args.question, args.top_k)
     if args.command == "eval":
-        return _eval(args.questions, args.out)
+        return _eval(args.questions, args.out, args.checkpoint, args.fresh)
     if args.command == "tune":
         return _tune(args.questions)
     if args.command == "ablate":
@@ -176,9 +179,11 @@ def _ask(question: str, top_k: int | None) -> int:
     return 0
 
 
-def _eval(questions_path: str, out_path: str) -> int:
+def _eval(questions_path: str, out_path: str, checkpoint_path: str, fresh: bool) -> int:
     from rag.embeddings import SentenceTransformerEmbedder
-    from rag.evaluate import evaluate, load_questions, render_report
+    import hashlib
+
+    from rag.evaluate import Checkpoint, evaluate, load_questions, render_report
     from rag.rerank import make_reranker
     from rag.llm import make_llm
     from rag.store import get_collection
@@ -195,6 +200,18 @@ def _eval(questions_path: str, out_path: str) -> int:
     if not questions:
         print("error: no test-split questions (dev questions are only used by `tune`)", file=sys.stderr)
         return 1
+    note = (
+        f"model {settings.llm_model}, embeddings {settings.embedding_model}, top_k {settings.top_k}, "
+        f"min_score {settings.min_score}, chunk size {settings.chunk_size}/{settings.chunk_overlap}, "
+        f"reranker {settings.rerank_model if settings.rerank else 'off'}"
+    )
+    fingerprint = note + " | questions " + hashlib.sha256(Path(questions_path).read_bytes()).hexdigest()[:12]
+    if fresh:
+        Path(checkpoint_path).unlink(missing_ok=True)
+
+    def progress(number, total, question_id, resumed):
+        print(f"[{number}/{total}] {question_id}{' (already done)' if resumed else ''}", flush=True)
+
     outcomes = evaluate(
         questions,
         collection=get_collection(settings.chroma_dir, settings.collection),
@@ -205,11 +222,8 @@ def _eval(questions_path: str, out_path: str) -> int:
         max_retries=settings.max_retries,
         reranker=make_reranker(settings),
         candidates=settings.rerank_candidates,
-    )
-    note = (
-        f"model {settings.llm_model}, embeddings {settings.embedding_model}, top_k {settings.top_k}, "
-        f"min_score {settings.min_score}, chunk size {settings.chunk_size}/{settings.chunk_overlap}, "
-        f"reranker {settings.rerank_model if settings.rerank else 'off'}"
+        checkpoint=Checkpoint(checkpoint_path, fingerprint),
+        on_progress=progress,
     )
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     Path(out_path).write_text(render_report(questions, outcomes, note))

@@ -130,6 +130,7 @@ Evaluation and tuning:
 ```bash
 python -m rag tune     # suggest MIN_SCORE from the dev questions (no LLM calls)
 python -m rag eval     # baseline vs naive RAG vs full system -> eval/results.md
+                       # saves progress as it goes: if interrupted, run it again to resume (--fresh starts over)
 python -m rag ablate --top-k 3,5,8    # compare settings -> eval/ablation.md
 python -m rag ablate --retrieval-only --rerank   # hit rate with/without reranking, no LLM calls
 pytest                 # offline unit tests

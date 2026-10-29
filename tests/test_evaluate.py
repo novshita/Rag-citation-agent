@@ -117,3 +117,76 @@ def test_load_questions_validates(tmp_path):
         {"id": "a", "group": "unanswerable", "question": "q2", "answerable": False}]))
     with pytest.raises(ValueError, match="unique"):
         load_questions(path)
+
+
+def test_checkpoint_saves_results_and_a_rerun_skips_finished_work(corpus, tmp_path):
+    from rag.evaluate import Checkpoint
+
+    path = tmp_path / "ck.jsonl"
+    calls = []
+
+    def generator(prompt):
+        calls.append(prompt)
+        return cited("apple apple apple is the best")(prompt)
+
+    def run_once(**kwargs):
+        return evaluate(
+            QUESTIONS, collection=corpus, embedder=KeywordEmbedder(),
+            llm=ScriptedLLM(generator, '{"declined": false, "correct": true}'),
+            top_k=3, min_score=0.5, max_retries=0,
+            checkpoint=Checkpoint(path, "fp-1"), **kwargs,
+        )
+
+    first = run_once()
+    calls_first_run = len(calls)
+    progress = []
+    second = run_once(on_progress=lambda n, total, qid, resumed: progress.append((qid, resumed)))
+
+    assert calls_first_run > 0 and len(calls) == calls_first_run    # nothing was recomputed
+    assert progress == [("s1", True), ("u1", True)]
+    assert [(o.system, o.question.id, o.abstained, o.correct) for o in second] == \
+           [(o.system, o.question.id, o.abstained, o.correct) for o in first]
+
+
+def test_checkpoint_resumes_after_an_interruption(corpus, tmp_path):
+    from rag.evaluate import Checkpoint
+
+    path = tmp_path / "ck.jsonl"
+
+    class Boom(Exception):
+        pass
+
+    seen = []
+
+    def crashing(prompt):
+        seen.append(1)
+        if "durian" in prompt:
+            raise Boom
+        return cited("apple apple apple is the best")(prompt)
+
+    def run(generator):
+        return evaluate(
+            QUESTIONS, collection=corpus, embedder=KeywordEmbedder(),
+            llm=ScriptedLLM(generator, '{"declined": false, "correct": true}'),
+            top_k=3, min_score=0.0, max_retries=0, checkpoint=Checkpoint(path, "fp"),
+        )
+
+    with pytest.raises(Boom):
+        run(crashing)                       # dies on the second question
+    saved = len(path.read_text().splitlines()) - 1
+    assert saved >= 3                       # the first question's results were already on disk
+
+    outcomes = run(cited("apple apple apple is the best"))
+    assert len(outcomes) == 6 and {o.question.id for o in outcomes} == {"s1", "u1"}
+
+
+def test_checkpoint_from_different_settings_is_refused(corpus, tmp_path):
+    from rag.evaluate import Checkpoint
+
+    path = tmp_path / "ck.jsonl"
+    llm = ScriptedLLM(cited("apple apple apple is the best"), '{"declined": false, "correct": true}')
+    kwargs = dict(collection=corpus, embedder=KeywordEmbedder(), llm=llm, top_k=3, min_score=0.5, max_retries=0)
+    evaluate(QUESTIONS, checkpoint=Checkpoint(path, "min_score 0.5"), **kwargs)
+
+    with pytest.raises(ValueError, match="--fresh"):
+        evaluate(QUESTIONS, checkpoint=Checkpoint(path, "min_score 0.9"), **kwargs)

@@ -23,7 +23,7 @@ Hallucination, two measures:
 import json
 import time
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal
 
@@ -173,6 +173,44 @@ def judge(q: Question, answer_text: str, llm: LLM) -> tuple[bool, bool | None]:
         return False, False
 
 
+# --- checkpoint: save each result as it finishes so an interrupted run can resume --------
+
+class Checkpoint:
+    """JSON-lines file of finished outcomes. The first line holds a fingerprint of the run's
+    settings, so results from a different model, threshold or question set are never mixed in."""
+
+    def __init__(self, path: str | Path, fingerprint: str):
+        self.path = Path(path)
+        self.fingerprint = fingerprint
+
+    def load(self, questions: dict[str, Question]) -> dict[tuple[str, str], Outcome]:
+        if not self.path.exists():
+            return {}
+        lines = self.path.read_text().splitlines()
+        if not lines:
+            return {}
+        if json.loads(lines[0]).get("fingerprint") != self.fingerprint:
+            raise ValueError(
+                f"{self.path} was made with different settings or questions; "
+                "rerun with --fresh to start over"
+            )
+        done = {}
+        for line in lines[1:]:
+            data = json.loads(line)
+            qid = data.pop("question_id")
+            done[(data["system"], qid)] = Outcome(question=questions[qid], **data)
+        return done
+
+    def save(self, outcome: Outcome) -> None:
+        new_file = not self.path.exists() or self.path.stat().st_size == 0
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with self.path.open("a") as f:
+            if new_file:
+                f.write(json.dumps({"fingerprint": self.fingerprint}) + "\n")
+            data = {k: v for k, v in asdict(outcome).items() if k != "question"}
+            f.write(json.dumps({"question_id": outcome.question.id, **data}) + "\n")
+
+
 # --- the whole run -------------------------------------------------------------
 
 def evaluate(
@@ -188,14 +226,24 @@ def evaluate(
     systems: tuple[str, ...] = SYSTEMS,
     reranker=None,
     candidates: int = DEFAULT_CANDIDATES,
+    checkpoint: Checkpoint | None = None,
+    on_progress=None,
 ) -> list[Outcome]:
     judge_llm = judge_llm or llm
     outcomes: list[Outcome] = []
+    done = checkpoint.load({q.id: q for q in questions}) if checkpoint else {}
 
-    for q in questions:
-        chunks = retrieve(q.question, collection=collection, embedder=embedder, top_k=top_k,
-                          reranker=reranker, candidates=candidates)
+    for number, q in enumerate(questions, start=1):
+        pending = [s for s in systems if (s, q.id) not in done]
+        chunks = (
+            retrieve(q.question, collection=collection, embedder=embedder, top_k=top_k,
+                     reranker=reranker, candidates=candidates)
+            if pending else []
+        )
         for system in systems:
+            if (system, q.id) in done:
+                outcomes.append(done[(system, q.id)])
+                continue
             if system == "baseline":
                 outcome = run_baseline(q, llm)
                 outcome.abstained, outcome.correct = judge(q, outcome.answer_text, judge_llm)
@@ -209,6 +257,10 @@ def evaluate(
                 if q.answerable and not outcome.abstained:
                     _, outcome.correct = judge(q, outcome.answer_text, judge_llm)
             outcomes.append(outcome)
+            if checkpoint:
+                checkpoint.save(outcome)
+        if on_progress:
+            on_progress(number, len(questions), q.id, resumed=not pending)
     return outcomes
 
 

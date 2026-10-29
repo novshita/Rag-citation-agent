@@ -20,3 +20,6 @@ data/chroma/
 .DS_Store
 .vscode/
 .idea/
+
+# Eval progress file
+eval/.checkpoint.jsonl

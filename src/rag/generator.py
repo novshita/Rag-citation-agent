@@ -28,8 +28,10 @@ Rules:
 - Copy "chunk_id" and "doc_id" (and "page", if the chunk has one) from the chunk header.
 - If the context fully answers the question, use status "answered".
 - If it answers only part of it, use status "partial", answer what you can, and say what is missing in "reason".
-- If the context does not contain the answer, or the question rests on a false premise, \
-use status "abstained", an empty "claims" list, and explain in "reason".
+- If the question rests on a false premise that the context contradicts, do not go along with it: \
+answer with the correction the context gives, as a cited claim (status "answered").
+- If the context does not address the question at all, use status "abstained", an empty "claims" list, \
+and explain in "reason".
 - "confidence" is your own 0-1 estimate that the answer is fully supported.
 
 Reply with a single JSON object and nothing else:
@@ -68,14 +70,12 @@ def build_user_message(question: str, chunks: list[RetrievedChunk]) -> str:
 
 def parse_answer(text: str) -> RAGAnswer:
     """Parse a model reply into a RAGAnswer. Raises ValueError (incl. ValidationError) if invalid."""
-    text = text.strip()
-    fenced = re.search(r"```(?:json)?\s*(.*?)```", text, re.DOTALL)
-    if fenced:
-        text = fenced.group(1).strip()
-    elif not text.startswith("{"):
-        start, end = text.find("{"), text.rfind("}")
-        if start != -1 and end > start:
-            text = text[start:end + 1]
+    # The reply is one JSON object, possibly wrapped in a code fence or prose. Take everything
+    # from the first "{" to the last "}". (Matching the fence itself breaks when a quoted
+    # passage contains a fence of its own, as in docs that show code samples.)
+    start, end = text.find("{"), text.rfind("}")
+    if start != -1 and end > start:
+        text = text[start:end + 1]
     return RAGAnswer.model_validate_json(text)
 
 

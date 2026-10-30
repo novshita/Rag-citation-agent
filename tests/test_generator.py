@@ -107,3 +107,13 @@ def test_model_abstention_with_blank_answer_gets_the_standard_message():
 
     assert result.answer.status == "abstained"
     assert result.answer.answer == "The provided documents do not contain this information."
+
+
+def test_parse_answer_survives_a_code_fence_inside_a_quote():
+    quote = 'and a JSON response of:\n\n```JSON\n{"detail": "Item not found"}\n```'
+    reply = "```json\n" + answered_json(quote=quote) + "\n```"
+
+    answer = parse_answer(reply)
+
+    assert answer.status == "answered"
+    assert answer.claims[0].citations[0].quote == quote

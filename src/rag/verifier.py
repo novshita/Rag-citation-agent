@@ -1,8 +1,10 @@
 """Check every citation against the retrieved text. Deterministic: no LLM involved.
 
 A citation passes when its chunk_id is one of the retrieved chunks and its quote
-appears in that chunk's text (ignoring case, whitespace, and Unicode look-alikes
-such as PDF ligatures and curly quotes).
+appears in that chunk's text (ignoring case, whitespace, Unicode look-alikes such as
+PDF ligatures and curly quotes, and Markdown formatting such as `code`, **bold** and
+[link text](url)). Models often quote the plain words of a Markdown source and drop the
+formatting; the words and their order still have to match exactly.
 
 A claim survives only if *all* its citations pass: one fabricated quote is enough
 to distrust the claim. Then the answer's status is set from what survived:
@@ -11,6 +13,7 @@ to distrust the claim. Then the answer's status is set from what survived:
   none survive        -> "abstained"
 """
 
+import re
 import unicodedata
 from dataclasses import dataclass, field
 from typing import Literal
@@ -24,8 +27,13 @@ _LOOKALIKES = str.maketrans({
 })
 
 
+_MD_LINK = re.compile(r"\[([^\]]*)\]\([^)\s]*\)")   # [text](url) -> text
+_MD_MARKS = re.compile(r"[`*]")                         # code ticks and emphasis asterisks
+
+
 def normalize(text: str) -> str:
     text = unicodedata.normalize("NFKC", text).translate(_LOOKALIKES)
+    text = _MD_MARKS.sub("", _MD_LINK.sub(r"\1", text))
     return " ".join(text.lower().split())
 
 

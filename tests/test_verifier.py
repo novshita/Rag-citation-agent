@@ -1,6 +1,6 @@
 from rag.fallback import ABSTAIN_MESSAGE
 from rag.schemas import Chunk, Citation, Claim, RAGAnswer
-from rag.verifier import normalize, verify
+from rag.verifier import check_citation, normalize, verify
 
 CHUNKS = [
     Chunk(chunk_id="policy.pdf:p3:c0", doc_id="policy.pdf", page=3,
@@ -102,3 +102,24 @@ def test_doc_and_page_are_taken_from_the_chunk():
                        doc_id="other.pdf", page=99)
     citation = verify(answered(wrong_page), CHUNKS).answer.claims[0].citations[0]
     assert (citation.doc_id, citation.page) == ("policy.pdf", 3)
+
+
+def test_markdown_formatting_in_the_source_is_ignored():
+    source = "To receive uploaded files, first install [`python-multipart`](https://github.com/Kludex/python-multipart)."
+    chunks = {"c": Chunk(chunk_id="c", doc_id="d", page=None, text=source, char_start=0, char_end=len(source))}
+
+    for quote in (
+        "first install python-multipart",                                            # plain words
+        "first install [`python-multipart`](https://github.com/Kludex/python-multipart)",   # verbatim
+        "to receive **uploaded** files, first install `python-multipart`.",          # different marks
+    ):
+        assert check_citation(Citation(chunk_id="c", doc_id="d", quote=quote), chunks).passed, quote
+    assert normalize("**Bold** and `code`") == "bold and code"
+
+
+def test_fabricated_words_still_fail_despite_markdown_tolerance():
+    source = "To receive uploaded files, first install [`python-multipart`](https://example.com)."
+    chunks = {"c": Chunk(chunk_id="c", doc_id="d", page=None, text=source, char_start=0, char_end=len(source))}
+
+    for quote in ("first install python-multipart and httpx", "first install `python-multiparts`"):
+        assert not check_citation(Citation(chunk_id="c", doc_id="d", quote=quote), chunks).passed, quote

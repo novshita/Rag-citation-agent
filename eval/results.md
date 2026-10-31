@@ -8,14 +8,14 @@ Settings: model gemini-3.5-flash-lite, embeddings all-MiniLM-L6-v2, top_k 5, min
 | Metric | baseline | naive | full |
 |---|---|---|---|
 | Retrieval hit rate (answerable) | n/a | 91% | 91% |
-| Answer correctness (answerable) | 82% | 95% | 82% |
-| Citation validity | n/a | 98% | 93% |
+| Answer correctness (answerable) | 86% | 95% | 91% |
+| Citation validity | n/a | 98% | 100% |
 | Abstention accuracy (unanswerable) | 0% | 75% | 75% |
-| False abstention rate (answerable) | 5% | 5% | 18% |
+| False abstention rate (answerable) | 5% | 5% | 9% |
 | Hallucination rate (unanswerable) | 100% | 25% | 25% |
 | Answers with an unsupported claim | n/a | 4% | 0% |
-| Avg latency (ms) | 5194 | 3047 | 3050 |
-| Avg tokens per question | 202 | 1990 | 1841 |
+| Avg latency (ms) | 4191 | 4214 | 3431 |
+| Avg tokens per question | 218 | 1993 | 1804 |
 
 ## Method
 
@@ -30,20 +30,20 @@ Settings: model gemini-3.5-flash-lite, embeddings all-MiniLM-L6-v2, top_k 5, min
 | id | group | system | abstained | hit | correct | citations valid |
 |---|---|---|---|---|---|---|
 | s01 | single | baseline | no | - | yes | - |
-| s01 | single | naive | no | yes | yes | 1/1 |
+| s01 | single | naive | no | yes | yes | 2/2 |
 | s01 | single | full | no | yes | yes | 2/2 |
 | s03 | single | baseline | no | - | yes | - |
-| s03 | single | naive | no | yes | yes | 2/2 |
-| s03 | single | full | no | yes | yes | 1/2 |
+| s03 | single | naive | no | yes | yes | 1/1 |
+| s03 | single | full | no | yes | yes | 2/2 |
 | s04 | single | baseline | no | - | yes | - |
 | s04 | single | naive | no | yes | yes | 1/1 |
 | s04 | single | full | no | yes | yes | 2/2 |
 | s05 | single | baseline | no | - | yes | - |
-| s05 | single | naive | no | yes | yes | 0/1 |
-| s05 | single | full | yes | yes | - | 0/1 |
+| s05 | single | naive | no | yes | yes | 1/1 |
+| s05 | single | full | no | yes | yes | 1/1 |
 | s07 | single | baseline | no | - | yes | - |
-| s07 | single | naive | no | yes | yes | 3/3 |
-| s07 | single | full | no | yes | yes | 2/2 |
+| s07 | single | naive | no | yes | yes | 2/2 |
+| s07 | single | full | no | yes | yes | 3/3 |
 | s08 | single | baseline | no | - | yes | - |
 | s08 | single | naive | no | yes | yes | 4/4 |
 | s08 | single | full | no | yes | yes | 4/4 |
@@ -63,18 +63,18 @@ Settings: model gemini-3.5-flash-lite, embeddings all-MiniLM-L6-v2, top_k 5, min
 | s14 | single | naive | no | yes | yes | 2/2 |
 | s14 | single | full | no | yes | yes | 3/3 |
 | s15 | single | baseline | no | - | yes | - |
-| s15 | single | naive | no | yes | yes | 2/2 |
-| s15 | single | full | no | yes | yes | 1/1 |
+| s15 | single | naive | no | yes | yes | 1/1 |
+| s15 | single | full | no | yes | yes | 2/2 |
 | m01 | multi | baseline | no | - | yes | - |
 | m01 | multi | naive | yes | no | - | - |
 | m01 | multi | full | yes | no | - | - |
 | m02 | multi | baseline | no | - | yes | - |
 | m02 | multi | naive | no | yes | yes | 3/3 |
-| m02 | multi | full | no | yes | yes | 3/3 |
+| m02 | multi | full | no | yes | yes | 4/4 |
 | m04 | multi | baseline | no | - | yes | - |
-| m04 | multi | naive | no | yes | yes | 2/2 |
-| m04 | multi | full | no | yes | yes | 3/3 |
-| m05 | multi | baseline | no | - | no | - |
+| m04 | multi | naive | no | yes | yes | 1/2 |
+| m04 | multi | full | no | yes | yes | 2/2 |
+| m05 | multi | baseline | no | - | yes | - |
 | m05 | multi | naive | no | yes | yes | 2/2 |
 | m05 | multi | full | no | yes | yes | 2/2 |
 | m06 | multi | baseline | no | - | yes | - |
@@ -86,9 +86,9 @@ Settings: model gemini-3.5-flash-lite, embeddings all-MiniLM-L6-v2, top_k 5, min
 | m08 | multi | baseline | no | - | yes | - |
 | m08 | multi | naive | no | yes | yes | 2/2 |
 | m08 | multi | full | no | yes | yes | 2/2 |
-| u05 | unanswerable | baseline | no | - | no | - |
-| u05 | unanswerable | naive | no | - | - | 1/1 |
-| u05 | unanswerable | full | no | - | - | 2/2 |
+| u05 | unanswerable | baseline | no | - | yes | - |
+| u05 | unanswerable | naive | no | - | - | 2/2 |
+| u05 | unanswerable | full | no | - | - | 1/1 |
 | u06 | unanswerable | baseline | no | - | - | - |
 | u06 | unanswerable | naive | yes | - | - | - |
 | u06 | unanswerable | full | yes | - | - | - |
@@ -98,21 +98,21 @@ Settings: model gemini-3.5-flash-lite, embeddings all-MiniLM-L6-v2, top_k 5, min
 | u08 | unanswerable | baseline | no | - | yes | - |
 | u08 | unanswerable | naive | yes | - | - | - |
 | u08 | unanswerable | full | yes | - | - | - |
-| u09 | unanswerable | baseline | no | - | no | - |
+| u09 | unanswerable | baseline | no | - | - | - |
 | u09 | unanswerable | naive | yes | - | - | - |
 | u09 | unanswerable | full | yes | - | - | - |
 | u10 | unanswerable | baseline | no | - | - | - |
-| u10 | unanswerable | naive | no | - | - | 2/2 |
+| u10 | unanswerable | naive | no | - | - | 1/1 |
 | u10 | unanswerable | full | no | - | - | 2/2 |
 | a01 | adversarial | baseline | no | - | no | - |
 | a01 | adversarial | naive | no | yes | yes | 1/1 |
-| a01 | adversarial | full | yes | yes | - | 0/1 |
+| a01 | adversarial | full | no | yes | yes | 1/1 |
 | a02 | adversarial | baseline | no | - | yes | - |
-| a02 | adversarial | naive | no | yes | yes | 1/1 |
+| a02 | adversarial | naive | no | yes | yes | 2/2 |
 | a02 | adversarial | full | no | yes | yes | 1/1 |
 | a03 | adversarial | baseline | no | - | yes | - |
-| a03 | adversarial | naive | no | yes | yes | 3/3 |
-| a03 | adversarial | full | no | yes | yes | 5/5 |
+| a03 | adversarial | naive | no | yes | yes | 5/5 |
+| a03 | adversarial | full | no | yes | yes | 4/4 |
 | a04 | adversarial | baseline | no | - | yes | - |
 | a04 | adversarial | naive | yes | - | - | - |
 | a04 | adversarial | full | yes | - | - | - |

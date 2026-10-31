@@ -228,6 +228,7 @@ def evaluate(
     candidates: int = DEFAULT_CANDIDATES,
     checkpoint: Checkpoint | None = None,
     on_progress=None,
+    hybrid: bool = False,
 ) -> list[Outcome]:
     judge_llm = judge_llm or llm
     outcomes: list[Outcome] = []
@@ -237,7 +238,7 @@ def evaluate(
         pending = [s for s in systems if (s, q.id) not in done]
         chunks = (
             retrieve(q.question, collection=collection, embedder=embedder, top_k=top_k,
-                     reranker=reranker, candidates=candidates)
+                     reranker=reranker, candidates=candidates, hybrid=hybrid)
             if pending else []
         )
         for system in systems:

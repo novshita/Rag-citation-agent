@@ -21,6 +21,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
 ui = ["streamlit>=1.40"]
+api = ["fastapi>=0.110", "uvicorn>=0.30"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

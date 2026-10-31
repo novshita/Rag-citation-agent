@@ -19,6 +19,7 @@ class Variant:
     top_k: int
     reranker: object | None = None
     candidates: int = DEFAULT_CANDIDATES
+    hybrid: bool = False
 
 
 def run_ablation(
@@ -35,7 +36,7 @@ def run_ablation(
         outcomes = evaluate(
             questions, collection=v.collection, embedder=embedder, llm=llm,
             top_k=v.top_k, min_score=min_score, max_retries=max_retries, systems=("full",),
-            reranker=v.reranker, candidates=v.candidates,
+            reranker=v.reranker, candidates=v.candidates, hybrid=v.hybrid,
         )
         rows.append((v, compute_metrics(outcomes)))
     return rows
@@ -50,7 +51,7 @@ def retrieval_hit_rates(questions: list[Question], variants: list[Variant], *, e
             if not q.answerable:
                 continue
             chunks = retrieve(q.question, collection=v.collection, embedder=embedder, top_k=v.top_k,
-                              reranker=v.reranker, candidates=v.candidates)
+                              reranker=v.reranker, candidates=v.candidates, hybrid=v.hybrid)
             hits.append(bool(retrieval_hit(q, chunks)))
         rows.append((v, sum(hits) / len(hits) if hits else None))
     return rows

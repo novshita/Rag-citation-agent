@@ -1,0 +1,13 @@
+.git
+.venv
+.env
+.pytest_cache
+__pycache__
+*.py[cod]
+*.egg-info
+tests
+data
+eval/.checkpoint.jsonl
+*.sqlite
+*.db
+.DS_Store

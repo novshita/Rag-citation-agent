@@ -132,6 +132,20 @@ pip install -e ".[ui]"
 streamlit run src/rag/ui.py
 ```
 
+HTTP API and Docker (the index and `.env` are mounted, never baked into the image):
+
+```bash
+pip install -e ".[api]"
+uvicorn rag.api:create_default_app --factory --port 8000
+curl -X POST localhost:8000/ask -H 'Content-Type: application/json' \
+     -d '{"question": "how do background tasks work?"}'
+
+docker build -t rag-agent .
+docker run --rm -p 8000:8000 --env-file .env -v "$PWD/data:/app/data" rag-agent
+```
+
+`POST /ask` returns the status, answer, confidence, claims with their verified quotes and sources, the retrieved passages, the gate decision, latency and tokens. `GET /health` is a liveness check. Set `RAG_API_KEY` to require an `X-API-Key` header, which you should do for any deployment reachable from the internet, since every request spends LLM quota. The image is about 2.8 GB (PyTorch and the ML libraries); the embedding model is baked in so the first request doesn't download it.
+
 Evaluation and tuning:
 
 ```bash
@@ -139,7 +153,7 @@ python -m rag tune     # suggest MIN_SCORE from the dev questions (no LLM calls)
 python -m rag eval     # baseline vs naive RAG vs full system -> eval/results.md
                        # saves progress as it goes: if interrupted, run it again to resume (--fresh starts over)
 python -m rag ablate --top-k 3,5,8    # compare settings -> eval/ablation.md
-python -m rag ablate --retrieval-only --rerank   # hit rate with/without reranking, no LLM calls
+python -m rag ablate --retrieval-only --rerank --hybrid   # hit rate with/without reranking and hybrid search, no LLM calls
 pytest                 # offline unit tests
 pytest -m live         # end-to-end test with the real model (costs a few API calls)
 ```
@@ -195,6 +209,7 @@ Model `gemini-3.5-flash-lite`, `MIN_SCORE=0.42`, top-k 5, one run:
 | Top-k | 5 | Ablation over 3, 5 and 8 is available via `python -m rag ablate` |
 | Vector store | ChromaDB, local | Enough for tens of documents |
 | Reranking | Optional cross-encoder (`RERANK=true`), off by default | Rescores a wider candidate set and keeps the best top-k. On the 22 answerable test questions it changed retrieval hit rate by at most one question (see [eval/retrieval_ablation.md](eval/retrieval_ablation.md)), so it is not worth the extra model by default |
+| Hybrid search | Optional (`HYBRID=true`), off by default | Merges keyword (BM25) and vector rankings by reciprocal rank fusion, to catch exact terms (option names, rare words) that embeddings can miss. Passages keep their vector similarity as the score, so the gate is unaffected. On the 22 answerable test questions it changed retrieval hit rate by at most one question, like reranking (see [eval/retrieval_ablation.md](eval/retrieval_ablation.md)), so it stays opt-in |
 | `MIN_SCORE` | 0.42 | Chosen with `python -m rag tune`, just below the lowest answerable dev score (0.45). On the 8 dev questions the answerable and unanswerable scores overlapped (unanswerable up to 0.63), so the gate alone can't catch every out-of-corpus question. On the test set it stopped 4 questions: 3 unanswerable ones the model would have refused anyway, and 1 answerable one (`s12`, 0.414) wrongly. So here it saved some model calls but improved nothing |
 | Confidence | `claim_pass_rate × (0.3 × retrieval + 0.7 × model confidence)` | A failed citation should pull confidence down however sure the model sounded, so it is a multiplier. The weights are a starting point |
 | Claim removal | A claim survives only if all its citations verify | One fabricated quote is enough to distrust the claim |
@@ -214,4 +229,4 @@ Model `gemini-3.5-flash-lite`, `MIN_SCORE=0.42`, top-k 5, one run:
 
 ## Built with
 
-Python · ChromaDB · Pydantic · sentence-transformers · Google Gemini / Anthropic Claude · Streamlit (optional UI) · pytest
+Python · ChromaDB · Pydantic · sentence-transformers · Google Gemini / Anthropic Claude · Streamlit (optional UI) · FastAPI + Docker (optional API) · pytest

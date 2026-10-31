@@ -40,6 +40,7 @@ def main(argv: list[str] | None = None) -> int:
     ablate.add_argument("--corpus", default="data/raw", help="folder to ingest for each chunk size")
     ablate.add_argument("--out", default="eval/ablation.md")
     ablate.add_argument("--rerank", action="store_true", help="also run every variant with the cross-encoder reranker")
+    ablate.add_argument("--hybrid", action="store_true", help="also run every variant with hybrid (keyword + vector) search")
     ablate.add_argument("--retrieval-only", action="store_true", help="compare retrieval hit rate only (no LLM calls)")
 
     args = parser.parse_args(argv)
@@ -114,6 +115,7 @@ def _search(question: str, top_k: int | None) -> int:
         top_k=top_k or settings.top_k,
         reranker=make_reranker(settings),
         candidates=settings.rerank_candidates,
+        hybrid=settings.hybrid,
     )
     if not chunks:
         print("no chunks found (has the corpus been ingested?)")
@@ -155,6 +157,7 @@ def _ask(question: str, top_k: int | None) -> int:
         top_k=top_k or settings.top_k,
         reranker=make_reranker(settings),
         candidates=settings.rerank_candidates,
+        hybrid=settings.hybrid,
     )
     result = answer_question(
         question, chunks,
@@ -203,7 +206,7 @@ def _eval(questions_path: str, out_path: str, checkpoint_path: str, fresh: bool)
     note = (
         f"model {settings.llm_model}, embeddings {settings.embedding_model}, top_k {settings.top_k}, "
         f"min_score {settings.min_score}, chunk size {settings.chunk_size}/{settings.chunk_overlap}, "
-        f"reranker {settings.rerank_model if settings.rerank else 'off'}"
+        f"reranker {settings.rerank_model if settings.rerank else 'off'}, hybrid {'on' if settings.hybrid else 'off'}"
     )
     fingerprint = note + " | questions " + hashlib.sha256(Path(questions_path).read_bytes()).hexdigest()[:12]
     if fresh:
@@ -222,6 +225,7 @@ def _eval(questions_path: str, out_path: str, checkpoint_path: str, fresh: bool)
         max_retries=settings.max_retries,
         reranker=make_reranker(settings),
         candidates=settings.rerank_candidates,
+        hybrid=settings.hybrid,
         checkpoint=Checkpoint(checkpoint_path, fingerprint),
         on_progress=progress,
     )
@@ -250,6 +254,7 @@ def _tune(questions_path: str) -> int:
         top_k=settings.top_k,
         reranker=make_reranker(settings),
         candidates=settings.rerank_candidates,
+        hybrid=settings.hybrid,
     )
     if scored and not any(score for _, score in scored):
         print("error: nothing was retrieved for any dev question (has the corpus been ingested?)", file=sys.stderr)
@@ -305,6 +310,8 @@ def _ablate(args) -> int:
                           chunk_size=size, chunk_overlap=overlap)
         for k in top_ks:
             variants.append(Variant(f"chunk {size}, top-k {k}", collection, k))
+            if args.hybrid:
+                variants.append(Variant(f"chunk {size}, top-k {k}, hybrid", collection, k, hybrid=True))
             if reranker:
                 variants.append(Variant(
                     f"chunk {size}, top-k {k}, reranked", collection, k,

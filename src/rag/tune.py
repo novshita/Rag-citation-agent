@@ -42,11 +42,12 @@ class TuneResult:
 
 def top_scores(
     questions: list[Question], collection, embedder, top_k: int, reranker=None, candidates: int = DEFAULT_CANDIDATES,
+    hybrid: bool = False,
 ) -> list[tuple[Question, float]]:
     scored = []
     for q in questions:
         chunks = retrieve(q.question, collection=collection, embedder=embedder, top_k=top_k,
-                          reranker=reranker, candidates=candidates)
+                          reranker=reranker, candidates=candidates, hybrid=hybrid)
         scored.append((q, max((c.score for c in chunks), default=0.0)))
     return scored
 

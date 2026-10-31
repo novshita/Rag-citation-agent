@@ -63,27 +63,9 @@ def run_app(ask) -> None:
 @st.cache_resource(show_spinner="Loading models...")
 def _load_pipeline():
     from rag.config import load_settings
-    from rag.embeddings import SentenceTransformerEmbedder
-    from rag.llm import make_llm
-    from rag.pipeline import answer_question
-    from rag.rerank import make_reranker
-    from rag.retriever import retrieve
-    from rag.store import get_collection
+    from rag.runtime import build_ask
 
-    settings = load_settings()
-    if not settings.llm_model:
-        raise RuntimeError("Set LLM_MODEL in .env (see .env.example)")
-    collection = get_collection(settings.chroma_dir, settings.collection)
-    embedder = SentenceTransformerEmbedder(settings.embedding_model)
-    llm = make_llm(settings.llm_provider, settings.llm_model)
-    reranker = make_reranker(settings)
-
-    def ask(question: str) -> PipelineResult:
-        chunks = retrieve(question, collection=collection, embedder=embedder, top_k=settings.top_k,
-                          reranker=reranker, candidates=settings.rerank_candidates)
-        return answer_question(question, chunks, llm, settings.min_score, settings.max_retries)
-
-    return ask
+    return build_ask(load_settings())
 
 
 if __name__ == "__main__":   # `streamlit run` executes this file as __main__; tests import it instead

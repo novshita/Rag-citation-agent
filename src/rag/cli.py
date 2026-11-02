@@ -25,7 +25,8 @@ def main(argv: list[str] | None = None) -> int:
 
     evaluate = commands.add_parser("eval", help="run the evaluation and write the results file")
     evaluate.add_argument("--questions", default="eval/questions.json")
-    evaluate.add_argument("--out", default="eval/results.md")
+    evaluate.add_argument("--out", help="default: eval/results.md, or eval/results_repeats.md with --repeat")
+    evaluate.add_argument("--repeat", type=int, default=1, help="run the whole evaluation N times and report the spread")
     evaluate.add_argument("--checkpoint", default="eval/.checkpoint.jsonl",
                           help="where finished results are saved so an interrupted run can resume")
     evaluate.add_argument("--fresh", action="store_true", help="ignore and delete any saved progress")
@@ -64,7 +65,7 @@ def _run(args) -> int:
     if args.command == "ask":
         return _ask(args.question, args.top_k)
     if args.command == "eval":
-        return _eval(args.questions, args.out, args.checkpoint, args.fresh)
+        return _eval(args.questions, args.out, args.checkpoint, args.fresh, args.repeat)
     if args.command == "tune":
         return _tune(args.questions)
     if args.command == "ablate":
@@ -200,13 +201,13 @@ def _ask(question: str, top_k: int | None) -> int:
     return 0
 
 
-def _eval(questions_path: str, out_path: str, checkpoint_path: str, fresh: bool) -> int:
-    from rag.embeddings import SentenceTransformerEmbedder
+def _eval(questions_path: str, out_path: str | None, checkpoint_path: str, fresh: bool, repeat: int = 1) -> int:
     import hashlib
 
-    from rag.evaluate import Checkpoint, evaluate, load_questions, render_report
-    from rag.rerank import make_reranker
+    from rag.embeddings import SentenceTransformerEmbedder
+    from rag.evaluate import Checkpoint, evaluate, load_questions, render_repeat_report, render_report
     from rag.llm import make_llm
+    from rag.rerank import make_reranker
     from rag.store import get_collection
 
     settings = load_settings()
@@ -215,6 +216,9 @@ def _eval(questions_path: str, out_path: str, checkpoint_path: str, fresh: bool)
         return 1
     if not Path(questions_path).is_file():
         print(f"error: {questions_path} not found (see eval/questions.example.json)", file=sys.stderr)
+        return 1
+    if repeat < 1:
+        print("error: --repeat must be at least 1", file=sys.stderr)
         return 1
 
     questions = [q for q in load_questions(questions_path) if q.split == "test"]
@@ -227,29 +231,40 @@ def _eval(questions_path: str, out_path: str, checkpoint_path: str, fresh: bool)
         f"reranker {settings.rerank_model if settings.rerank else 'off'}, hybrid {'on' if settings.hybrid else 'off'}"
     )
     fingerprint = note + " | questions " + hashlib.sha256(Path(questions_path).read_bytes()).hexdigest()[:12]
+
+    # One checkpoint per run, so any run can be resumed after an interruption.
+    base = Path(checkpoint_path)
+    paths = [base] if repeat == 1 else [base.with_name(f"{base.stem}.run{i}{base.suffix}") for i in range(1, repeat + 1)]
     if fresh:
-        Path(checkpoint_path).unlink(missing_ok=True)
+        for path in paths:
+            path.unlink(missing_ok=True)
 
-    def progress(number, total, question_id, resumed):
-        print(f"[{number}/{total}] {question_id}{' (already done)' if resumed else ''}", flush=True)
+    collection = get_collection(settings.chroma_dir, settings.collection)
+    embedder = SentenceTransformerEmbedder(settings.embedding_model)
+    llm = make_llm(settings.llm_provider, settings.llm_model)
+    reranker = make_reranker(settings)
 
-    outcomes = evaluate(
-        questions,
-        collection=get_collection(settings.chroma_dir, settings.collection),
-        embedder=SentenceTransformerEmbedder(settings.embedding_model),
-        llm=make_llm(settings.llm_provider, settings.llm_model),
-        top_k=settings.top_k,
-        min_score=settings.min_score,
-        max_retries=settings.max_retries,
-        reranker=make_reranker(settings),
-        candidates=settings.rerank_candidates,
-        hybrid=settings.hybrid,
-        checkpoint=Checkpoint(checkpoint_path, fingerprint),
-        on_progress=progress,
-    )
-    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
-    Path(out_path).write_text(render_report(questions, outcomes, note))
-    print(f"wrote {out_path}")
+    runs = []
+    for run_number, path in enumerate(paths, start=1):
+        prefix = f"run {run_number}/{repeat} " if repeat > 1 else ""
+
+        def progress(number, total, question_id, resumed, prefix=prefix):
+            print(f"{prefix}[{number}/{total}] {question_id}{' (already done)' if resumed else ''}", flush=True)
+
+        runs.append(evaluate(
+            questions, collection=collection, embedder=embedder, llm=llm,
+            top_k=settings.top_k, min_score=settings.min_score, max_retries=settings.max_retries,
+            reranker=reranker, candidates=settings.rerank_candidates, hybrid=settings.hybrid,
+            checkpoint=Checkpoint(path, fingerprint), on_progress=progress,
+        ))
+
+    if repeat == 1:
+        out, report = out_path or "eval/results.md", render_report(questions, runs[0], note)
+    else:
+        out, report = out_path or "eval/results_repeats.md", render_repeat_report(questions, runs, note)
+    Path(out).parent.mkdir(parents=True, exist_ok=True)
+    Path(out).write_text(report)
+    print(f"wrote {out}")
     return 0
 
 

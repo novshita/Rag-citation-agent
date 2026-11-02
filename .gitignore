@@ -22,4 +22,4 @@ data/chroma/
 .idea/
 
 # Eval progress file
-eval/.checkpoint.jsonl
+eval/.checkpoint*

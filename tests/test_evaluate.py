@@ -190,3 +190,57 @@ def test_checkpoint_from_different_settings_is_refused(corpus, tmp_path):
 
     with pytest.raises(ValueError, match="--fresh"):
         evaluate(QUESTIONS, checkpoint=Checkpoint(path, "min_score 0.9"), **kwargs)
+
+
+def test_repeat_report_shows_the_average_and_every_runs_value(corpus):
+    from rag.evaluate import render_repeat_report
+
+    good = run(corpus, cited("apple apple apple is the best"))                       # run 1: answerable question answered right
+    bad = run(corpus, cited("apple apple apple is the best"), judge='{"declined": false, "correct": false}')   # run 2: judged wrong
+
+    report = render_repeat_report(QUESTIONS, [good, bad], "test settings")
+
+    assert "2 independent runs" in report and "Settings: test settings." in report
+    # run 2's judge marks every answer wrong, so correctness is 100% then 0% for each system: average 50%
+    assert "| Answer correctness (answerable) | 50% (100% / 0%) | 50% (100% / 0%) | 50% (100% / 0%) |" in report
+    # a metric that never changes shows the same value in every run
+    assert "0% (0% / 0%)" in report
+    assert "n/a" in report                                                           # baseline has no retrieval hit rate
+
+
+def test_repeat_report_with_one_run_is_still_well_formed(corpus):
+    from rag.evaluate import render_repeat_report
+
+    report = render_repeat_report(QUESTIONS, [run(corpus, cited("apple apple apple is the best"))], "s")
+    assert "1 independent run of the same" in report and "(100%)" in report
+
+
+def test_a_second_evaluation_cannot_use_a_checkpoint_that_is_in_use(tmp_path):
+    import pytest
+
+    from rag.evaluate import Checkpoint
+
+    first, second = Checkpoint(tmp_path / "ck.jsonl", "fp"), Checkpoint(tmp_path / "ck.jsonl", "fp")
+    first.acquire()
+    with pytest.raises(RuntimeError, match="already using"):
+        second.acquire()
+
+    first.release()
+    second.acquire()          # free again once the first one is done
+    second.release()
+
+
+def test_the_lock_is_released_even_if_the_evaluation_crashes(corpus, tmp_path):
+    import pytest
+
+    from rag.evaluate import Checkpoint
+
+    def broken(prompt):
+        raise ValueError("boom")
+
+    path = tmp_path / "ck.jsonl"
+    with pytest.raises(ValueError):
+        evaluate(QUESTIONS, collection=corpus, embedder=KeywordEmbedder(),
+                 llm=ScriptedLLM(broken, '{"declined": false, "correct": true}'), top_k=3, min_score=0.0,
+                 max_retries=0, checkpoint=Checkpoint(path, "fp"))
+    Checkpoint(path, "fp").acquire()      # would raise if the crashed run still held the lock

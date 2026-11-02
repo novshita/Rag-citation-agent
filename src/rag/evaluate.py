@@ -182,6 +182,31 @@ class Checkpoint:
     def __init__(self, path: str | Path, fingerprint: str):
         self.path = Path(path)
         self.fingerprint = fingerprint
+        self._lock_file = None
+
+    def acquire(self) -> None:
+        """Take an exclusive lock so two evaluations can't write the same checkpoint (and spend the
+        same API quota twice). Raises if another process holds it. No-op where fcntl is missing."""
+        try:
+            import fcntl
+        except ImportError:
+            return
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        lock_file = open(f"{self.path}.lock", "w")
+        try:
+            fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            lock_file.close()
+            raise RuntimeError(
+                f"another evaluation is already using {self.path}. Wait for it to finish, "
+                "or use a different --checkpoint"
+            ) from None
+        self._lock_file = lock_file
+
+    def release(self) -> None:
+        if self._lock_file:
+            self._lock_file.close()          # closing the file drops the lock
+            self._lock_file = None
 
     def load(self, questions: dict[str, Question]) -> dict[tuple[str, str], Outcome]:
         if not self.path.exists():
@@ -229,6 +254,23 @@ def evaluate(
     checkpoint: Checkpoint | None = None,
     on_progress=None,
     hybrid: bool = False,
+) -> list[Outcome]:
+    if checkpoint:
+        checkpoint.acquire()
+    try:
+        return _evaluate(
+            questions, collection=collection, embedder=embedder, llm=llm, judge_llm=judge_llm, top_k=top_k,
+            min_score=min_score, max_retries=max_retries, systems=systems, reranker=reranker,
+            candidates=candidates, checkpoint=checkpoint, on_progress=on_progress, hybrid=hybrid,
+        )
+    finally:
+        if checkpoint:
+            checkpoint.release()
+
+
+def _evaluate(
+    questions, *, collection, embedder, llm, judge_llm, top_k, min_score, max_retries, systems,
+    reranker, candidates, checkpoint, on_progress, hybrid,
 ) -> list[Outcome]:
     judge_llm = judge_llm or llm
     outcomes: list[Outcome] = []
@@ -312,6 +354,17 @@ def _pct(value: float | None) -> str:
     return "n/a" if value is None else f"{value:.0%}"
 
 
+REPORT_ROWS = [
+    ("Retrieval hit rate (answerable)", "hit_rate"),
+    ("Answer correctness (answerable)", "correctness"),
+    ("Citation validity", "citation_validity"),
+    ("Abstention accuracy (unanswerable)", "abstention_accuracy"),
+    ("False abstention rate (answerable)", "false_abstention_rate"),
+    ("Hallucination rate (unanswerable)", "hallucination_unanswerable"),
+    ("Answers with an unsupported claim", "unsupported_claim_rate"),
+]
+
+
 def render_report(questions: list[Question], outcomes: list[Outcome], settings_note: str) -> str:
     by_system: dict[str, list[Outcome]] = defaultdict(list)
     for o in outcomes:
@@ -331,15 +384,7 @@ def render_report(questions: list[Question], outcomes: list[Outcome], settings_n
         "| Metric | " + " | ".join(systems) + " |",
         "|---|" + "---|" * len(systems),
     ]
-    rows = [
-        ("Retrieval hit rate (answerable)", "hit_rate"),
-        ("Answer correctness (answerable)", "correctness"),
-        ("Citation validity", "citation_validity"),
-        ("Abstention accuracy (unanswerable)", "abstention_accuracy"),
-        ("False abstention rate (answerable)", "false_abstention_rate"),
-        ("Hallucination rate (unanswerable)", "hallucination_unanswerable"),
-        ("Answers with an unsupported claim", "unsupported_claim_rate"),
-    ]
+    rows = REPORT_ROWS
     for label, attr in rows:
         lines.append(f"| {label} | " + " | ".join(_pct(getattr(metrics[s], attr)) for s in systems) + " |")
     lines.append("| Avg latency (ms) | " + " | ".join(f"{metrics[s].avg_latency_ms:.0f}" for s in systems) + " |")
@@ -375,3 +420,50 @@ def render_report(questions: list[Question], outcomes: list[Outcome], settings_n
 
 def _mark(value: bool | None) -> str:
     return "-" if value is None else ("yes" if value else "no")
+
+
+def render_repeat_report(questions: list[Question], runs: list[list[Outcome]], settings_note: str) -> str:
+    """Several independent runs of the same evaluation: each cell is the average, then every run's value.
+
+    The model gives different answers on repeated calls even at temperature 0, so one run's number
+    is one sample. Showing the spread says how much of a gap between systems could just be noise."""
+    per_run: list[dict[str, Metrics]] = []
+    for outcomes in runs:
+        by_system: dict[str, list[Outcome]] = defaultdict(list)
+        for o in outcomes:
+            by_system[o.system].append(o)
+        per_run.append({s: compute_metrics(by_system[s]) for s in SYSTEMS if s in by_system})
+    systems = [s for s in SYSTEMS if s in per_run[0]]
+
+    def cell(system: str, attr: str) -> str:
+        values = [getattr(run[system], attr) for run in per_run]
+        if all(v is None for v in values):
+            return "n/a"
+        present = [v for v in values if v is not None]
+        return f"{sum(present) / len(present):.0%} ({' / '.join(_pct(v) for v in values)})"
+
+    counts = {g: sum(q.group == g for q in questions) for g in GROUPS}
+    lines = [
+        "# Evaluation results: repeated runs",
+        "",
+        f"{len(runs)} independent run{'s' if len(runs) != 1 else ''} of the same {len(questions)} questions: "
+        + ", ".join(f"{counts[g]} {g}" for g in GROUPS) + ".",
+        f"Settings: {settings_note}.",
+        "",
+        "Each cell is the average over runs, then each run's value in brackets.",
+        "",
+        "| Metric | " + " | ".join(systems) + " |",
+        "|---|" + "---|" * len(systems),
+    ]
+    for label, attr in REPORT_ROWS:
+        lines.append(f"| {label} | " + " | ".join(cell(s, attr) for s in systems) + " |")
+    lines.append("| Avg latency (ms) | " + " | ".join(
+        f"{sum(r[s].avg_latency_ms for r in per_run) / len(per_run):.0f}" for s in systems) + " |")
+    lines += [
+        "",
+        "## How to read this",
+        "",
+        "- A gap between two systems that is smaller than the spread between runs of the same system is not evidence that one is better.",
+        "- Grading is as described in `eval/results.md` (code for abstention, hits and citations; an LLM judge for correctness).",
+    ]
+    return "\n".join(lines) + "\n"

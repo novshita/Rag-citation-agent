@@ -12,6 +12,7 @@ def build_ask(settings: Settings):
     from rag.rerank import make_reranker
     from rag.retriever import retrieve
     from rag.store import get_collection
+    from rag.web import DuckDuckGoSearch
 
     if not settings.llm_model:
         raise RuntimeError("Set LLM_MODEL in .env (see .env.example)")
@@ -19,12 +20,14 @@ def build_ask(settings: Settings):
     embedder = SentenceTransformerEmbedder(settings.embedding_model)
     llm = make_llm(settings.llm_provider, settings.llm_model)
     reranker = make_reranker(settings)
+    web_search = DuckDuckGoSearch() if settings.web_fallback else None
 
     def ask(question: str, top_k: int | None = None) -> PipelineResult:
         chunks = retrieve(
             question, collection=collection, embedder=embedder, top_k=top_k or settings.top_k,
             reranker=reranker, candidates=settings.rerank_candidates, hybrid=settings.hybrid,
         )
-        return answer_question(question, chunks, llm, settings.min_score, settings.max_retries)
+        return answer_question(question, chunks, llm, settings.min_score, settings.max_retries,
+                               web_search=web_search, web_results=settings.web_results)
 
     return ask

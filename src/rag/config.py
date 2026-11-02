@@ -20,6 +20,8 @@ class Settings:
     collection: str
     log_db: str
     hybrid: bool
+    web_fallback: bool
+    web_results: int
     rerank: bool
     rerank_model: str
     rerank_candidates: int
@@ -39,6 +41,8 @@ def load_settings() -> Settings:
         chroma_dir=os.getenv("CHROMA_DIR", "data/chroma"),
         collection=os.getenv("CHROMA_COLLECTION", "corpus"),
         log_db=os.getenv("LOG_DB", "data/logs.sqlite"),
+        web_fallback=os.getenv("WEB_FALLBACK", "false").lower() in ("1", "true", "yes"),
+        web_results=int(os.getenv("WEB_RESULTS", "5")),
         hybrid=os.getenv("HYBRID", "false").lower() in ("1", "true", "yes"),
         rerank=os.getenv("RERANK", "false").lower() in ("1", "true", "yes"),
         rerank_model=os.getenv("RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2"),

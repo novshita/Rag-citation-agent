@@ -1,5 +1,7 @@
 # RAG Citation Agent
 
+[![CI](https://github.com/novshita/rag-citation-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/novshita/rag-citation-agent/actions/workflows/ci.yml)
+
 Ask questions about a set of documents and get answers that are **backed by quotes from those documents**, or an honest "I don't know" when the answer isn't there.
 
 > **Headline result:** On 8 questions the documents can't answer, a plain chatbot answered all 8 (**100%**); this project answered **2 (25%)**, and both were hedged ("the documents don't cover this, but...") with cited sources. It answered **91%** of the 22 answerable questions correctly, wrongly refused **9%**, and **all 46** of its citations checked out against the source text.
@@ -97,13 +99,13 @@ For the full design, including schemas, thresholds and the evaluation method, se
 
 ## Quick start
 
-**Requirements:** Python 3.11+ and an API key for one LLM provider. Google Gemini has a free tier; Anthropic is paid.
+**Requirements:** Python 3.11+ (tested on 3.11 and 3.14) and an API key for one LLM provider. Google Gemini has a free tier; Anthropic is paid.
 
 ```bash
 git clone https://github.com/novshita/rag-citation-agent.git
 cd rag-citation-agent
 python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+pip install -e ".[dev]"      # the app plus everything the tests need; add [ui], [api], [web] to run those extras
 
 cp .env.example .env     # then edit .env, see below
 ```
@@ -123,6 +125,13 @@ Then get the example corpus (30 pages of the FastAPI docs), index it, and ask:
 python -m rag ingest data/raw                      # index the documents
 python -m rag search "how do background tasks work?"   # see what gets retrieved (no LLM call)
 python -m rag ask "how do background tasks work?"      # get a cited answer
+```
+
+Optional web-search fallback: when the documents can't answer, also show a web answer, labelled as not from your documents (and never mixed into the verified citations). Your question is sent to a web search service, so keep it off for private questions.
+
+```bash
+pip install -e ".[web]"
+WEB_FALLBACK=true python -m rag ask "how do I add rate limiting?"   # or set WEB_FALLBACK=true in .env
 ```
 
 Optional web UI: ask a question and see each cited quote highlighted in its source passage.
@@ -217,6 +226,7 @@ Model `gemini-3.5-flash-lite`, `MIN_SCORE=0.42`, top-k 5, one run:
 ## Limitations
 
 - Works with text-based PDFs and Markdown only, not scanned documents or images.
+- The optional web fallback can't be verified: its answer comes from search-result snippets, is labelled as not from your documents, and may be wrong or out of date.
 - The quote check confirms the text exists in the cited passage, but not that it fully supports the claim.
 - The FastAPI docs pull their code samples in from separate files that aren't part of the corpus, so questions about exact code can't be answered from it.
 - The answer-correctness grade comes from an LLM judge, which can be wrong; a 30-grade audit found it somewhat lenient on incomplete multi-part answers (see [eval/judge_audit.md](eval/judge_audit.md)), and that audit was not done by the author.
@@ -229,4 +239,4 @@ Model `gemini-3.5-flash-lite`, `MIN_SCORE=0.42`, top-k 5, one run:
 
 ## Built with
 
-Python · ChromaDB · Pydantic · sentence-transformers · Google Gemini / Anthropic Claude · Streamlit (optional UI) · FastAPI + Docker (optional API) · pytest
+Python · ChromaDB · Pydantic · sentence-transformers · Google Gemini / Anthropic Claude · Streamlit (optional UI) · FastAPI + Docker (optional API) · GitHub Actions CI · pytest

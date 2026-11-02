@@ -29,6 +29,18 @@ class Source(BaseModel):
     score: float
 
 
+class WebSource(BaseModel):
+    title: str
+    url: str
+    snippet: str
+
+
+class WebOut(BaseModel):
+    answer: str
+    disclaimer: str                   # always present: this is NOT grounded in the documents
+    sources: list[WebSource]
+
+
 class AskResponse(BaseModel):
     status: str                       # answered / partial / abstained
     answer: str
@@ -39,6 +51,7 @@ class AskResponse(BaseModel):
     gate_passed: bool
     latency_ms: int
     tokens: int
+    web: WebOut | None = None         # only when abstained and WEB_FALLBACK is on; never part of `claims`
 
 
 def to_response(result: PipelineResult, latency_ms: int) -> AskResponse:
@@ -51,6 +64,10 @@ def to_response(result: PipelineResult, latency_ms: int) -> AskResponse:
         gate_passed=result.gate.passed,
         latency_ms=latency_ms,
         tokens=(generation.input_tokens + generation.output_tokens) if generation else 0,
+        web=None if result.web is None else WebOut(
+            answer=result.web.answer, disclaimer=result.web.disclaimer,
+            sources=[WebSource(title=s.title, url=s.url, snippet=s.snippet) for s in result.web.sources],
+        ),
     )
 
 

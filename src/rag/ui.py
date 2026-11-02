@@ -37,6 +37,12 @@ def show_result(result: PipelineResult, seconds: float) -> None:
                     st.markdown(highlight_html(chunk.text, citation.quote).replace("\n", "<br>"),
                                 unsafe_allow_html=True)
 
+    if result.web:
+        st.warning(f"**Web search result.** {result.web.disclaimer}")
+        st.write(result.web.answer)
+        for number, source in enumerate(result.web.sources, start=1):
+            st.markdown(f"{number}. [{source.title}]({source.url})")
+
     with st.expander(f"Retrieved passages ({len(result.chunks)})"):
         gate = result.gate
         verdict = "passed" if gate.passed else f"stopped: {gate.reason}"

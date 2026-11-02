@@ -1,5 +1,7 @@
 import pytest
 
+pytest.importorskip("streamlit", reason="pip install -e \".[ui]\"")
+
 from rag.fallback import ABSTAIN_MESSAGE
 from rag.gate import GateDecision
 from rag.highlight import find_quote, highlight_html

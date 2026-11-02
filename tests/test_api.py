@@ -1,5 +1,9 @@
 import pytest
-from fastapi.testclient import TestClient
+
+pytest.importorskip("fastapi", reason="pip install -e \".[api]\"")
+pytest.importorskip("httpx")
+
+from fastapi.testclient import TestClient  # noqa: E402
 
 from rag.api import create_app
 from rag.logger import connect

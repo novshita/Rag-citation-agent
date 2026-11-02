@@ -133,6 +133,12 @@ def _search(question: str, top_k: int | None) -> int:
     return 0
 
 
+_SETUP_HINT = (
+    "error: no LLM is configured. In .env set LLM_PROVIDER (gemini or anthropic), LLM_MODEL, "
+    "and the matching API key (GEMINI_API_KEY or ANTHROPIC_API_KEY); see .env.example"
+)
+
+
 def _ask(question: str, top_k: int | None) -> int:
     import time
 
@@ -143,10 +149,11 @@ def _ask(question: str, top_k: int | None) -> int:
     from rag.rerank import make_reranker
     from rag.retriever import retrieve
     from rag.store import get_collection
+    from rag.web import DuckDuckGoSearch
 
     settings = load_settings()
     if not settings.llm_model:
-        print("error: set LLM_MODEL (see .env.example)", file=sys.stderr)
+        print(_SETUP_HINT, file=sys.stderr)
         return 1
 
     started = time.perf_counter()
@@ -159,11 +166,17 @@ def _ask(question: str, top_k: int | None) -> int:
         candidates=settings.rerank_candidates,
         hybrid=settings.hybrid,
     )
+    if not chunks:
+        print("error: no passages found; has the corpus been ingested? (python -m rag ingest <folder>)",
+              file=sys.stderr)
+        return 1
     result = answer_question(
         question, chunks,
         llm=make_llm(settings.llm_provider, settings.llm_model),
         min_score=settings.min_score,
         max_retries=settings.max_retries,
+        web_search=DuckDuckGoSearch() if settings.web_fallback else None,
+        web_results=settings.web_results,
     )
     latency_ms = int((time.perf_counter() - started) * 1000)
     log_query(connect(settings.log_db), question, result, latency_ms)
@@ -179,6 +192,11 @@ def _ask(question: str, top_k: int | None) -> int:
         for citation in claim.citations:
             where = citation.doc_id if citation.page is None else f"{citation.doc_id}, page {citation.page}"
             print(f'    - {where}: "{citation.quote}"')
+    if result.web:
+        print(f"\n--- WEB SEARCH RESULT: {result.web.disclaimer}")
+        print(result.web.answer)
+        for number, source in enumerate(result.web.sources, start=1):
+            print(f"    [{number}] {source.title} - {source.url}")
     return 0
 
 
@@ -193,7 +211,7 @@ def _eval(questions_path: str, out_path: str, checkpoint_path: str, fresh: bool)
 
     settings = load_settings()
     if not settings.llm_model:
-        print("error: set LLM_MODEL (see .env.example)", file=sys.stderr)
+        print(_SETUP_HINT, file=sys.stderr)
         return 1
     if not Path(questions_path).is_file():
         print(f"error: {questions_path} not found (see eval/questions.example.json)", file=sys.stderr)
@@ -281,7 +299,7 @@ def _ablate(args) -> int:
 
     settings = load_settings()
     if not args.retrieval_only and not settings.llm_model:
-        print("error: set LLM_MODEL (see .env.example)", file=sys.stderr)
+        print(_SETUP_HINT, file=sys.stderr)
         return 1
     if not Path(args.questions).is_file():
         print(f"error: {args.questions} not found", file=sys.stderr)

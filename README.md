@@ -4,8 +4,8 @@
 
 Ask questions about a set of documents and get answers that are **backed by quotes from those documents**, or an honest "I don't know" when the answer isn't there.
 
-> **Headline result:** On 8 questions the documents can't answer, a plain chatbot answered all 8 (**100%**); this project answered **2 (25%)**, and both were hedged ("the documents don't cover this, but...") with cited sources. It answered **91%** of the 22 answerable questions correctly, wrongly refused **9%**, and **all 46** of its citations checked out against the source text.
-> *(30 test questions, one run. Against basic RAG the difference is within noise; see [Results](#results) for what these numbers do and don't show.)*
+> **Headline result:** On 8 questions the documents can't answer, a plain chatbot answered all 8 (**100%**); this project answered **2 (25%)**, and both were hedged ("the documents don't cover this, but...") with cited sources. It answered **89%** of the 22 answerable questions correctly (86-91% over three runs), wrongly refused **9%** (2 questions), and **136 of 137** citations checked out against the source text; the one that didn't was removed before it reached an answer.
+> *(30 test questions, three independent runs. Against basic RAG, hallucination is identical; see [Results](#results) for what that means.)*
 
 ---
 
@@ -175,27 +175,28 @@ pytest -m live         # end-to-end test with the real model (costs a few API ca
 
 The system is tested on 30 hand-written questions (8 more are kept aside to tune the threshold): 22 the documents can answer (single page, several pages, and 3 false-premise questions where the right answer is a correction) and 8 they can't. It is compared against a plain chatbot and a basic RAG setup (retrieval and answering, but no relevance gate and no quote checking). The questions are in [eval/questions.json](eval/questions.json); every result is in [eval/results.md](eval/results.md).
 
-Model `gemini-3.5-flash-lite`, `MIN_SCORE=0.42`, top-k 5, one run:
+Model `gemini-3.5-flash-lite`, `MIN_SCORE=0.42`, top-k 5. Three independent runs of the whole evaluation; each cell is the average, with the range over runs where it varied. Every run is in [eval/results_repeats.md](eval/results_repeats.md) (the single-run report is [eval/results.md](eval/results.md)).
 
 | | Plain LLM | Basic RAG | This project |
 |---|---|---|---|
 | Retrieval hit rate (22 answerable) | n/a | 91% (20/22) | 91% (20/22) |
-| Correct answers (22 answerable) | 86% (19) | 95% (21) | 91% (20) |
-| Citations that check out | n/a | 98% (43/44) | 100% (46/46) |
-| Answers containing an unsupported claim | n/a | 1 of 23 | 0 of 22 |
+| Correct answers (22 answerable) | 86% (19) | 95% (21) | 89% (19-20; runs: 91 / 86 / 91%) |
+| Citations that check out | n/a | 99% (142/143) | 99% (136/137) |
+| Answers containing an unsupported claim | n/a | 1 of 69 | 0 of 66 |
 | Answered an unanswerable question (8) | 100% (8/8) | 25% (2/8) | 25% (2/8) |
 | Correctly says "I don't know" (8) | 0% | 75% (6/8) | 75% (6/8) |
-| Wrongly refuses (22 answerable) | 5% (1) | 5% (1) | 9% (2) |
+| Wrongly refuses (22 answerable) | 0-5% | 5% (1) | 9% (2) |
 
 **What this shows**
-- **Retrieval beats a plain chatbot at staying grounded.** The plain LLM answered all 8 questions the documents don't cover, from general knowledge, with no way to tell which parts came from the documents. With retrieval it answered 2.
+- **Retrieval beats a plain chatbot at staying grounded, and that is stable.** The plain LLM answered all 8 questions the documents don't cover, from general knowledge, with no way to tell which parts came from the documents. With retrieval it answered 2, in every one of the three runs.
 - **The 2 "hallucinations" are hedged answers.** For AWS Lambda and Celery the system said the documents don't cover it, then added a related fact that is in the documents, with a citation. They are counted as answers because they didn't abstain, which is the conservative reading; they contain no unsupported claim.
-- **Citation checking caught the one bad citation.** In basic RAG, 1 of 44 citations (question `m04`) was not in its passage. The full system removes such claims, so none reached an answer.
+- **Citation checking works, but there was little to catch.** The model's quotes were almost always genuine. Across the three runs, basic RAG produced 1 citation that wasn't in its passage (1 answer with an unsupported claim), and this project produced 1 as well, but removed it before it reached an answer. So its answers contain zero unsupported claims.
 
 **What it does not show**
-- **The extra checks barely mattered on this corpus.** The model's quotes were almost always genuine, and the relevance gate changed one outcome, a wrong refusal (`s12`, score 0.414 against a 0.42 threshold). Between basic RAG and this project the gaps (1 question on correctness, 1 on refusals) are within run-to-run noise. Don't read them as one being better.
+- **This project is not better than basic RAG at avoiding hallucination.** Both answer the same 2 of 8 unanswerable questions in every run (25%). Where they differ, the full system is slightly worse: 89% correct against 95%, and 9% wrongly refused against 5%. This is consistent across runs, so it isn't noise, but it is small: one question out of 22. It comes almost entirely from one question, `s12` ("What does the `--forwarded-allow-ips` option do?"). Its best retrieval score is 0.414, just under the 0.42 relevance gate, so this project refuses it in every run while basic RAG, which has no gate, answers it correctly. The rest of the gap is one extra wrong answer in run 2.
+- **The relevance gate bought nothing on this corpus.** It stopped 4 test questions: 3 unanswerable ones the model refuses anyway, and `s12`, wrongly. A gate tuned on only 8 dev questions is a coarse tool. I did not lower the threshold afterwards, because that would tune on the test set.
 - **The plain-LLM baseline is probably flattered on answerable questions,** because the FastAPI docs are public and likely in its training data.
-- **One run, 30 questions.** Gemini gives different answers on repeated calls even at temperature 0, so a few points either way is noise.
+- **Small test set.** 30 questions (22 answerable, 8 unanswerable), so one question moves the percentages by 5 points or more.
 
 **How it was graded**
 - Retrieval hit, abstention and citation validity are computed by code. A hit means a retrieved passage came from each expected document (not that it was the exact passage).
@@ -229,8 +230,8 @@ Model `gemini-3.5-flash-lite`, `MIN_SCORE=0.42`, top-k 5, one run:
 - The optional web fallback can't be verified: its answer comes from search-result snippets, is labelled as not from your documents, and may be wrong or out of date.
 - The quote check confirms the text exists in the cited passage, but not that it fully supports the claim.
 - The FastAPI docs pull their code samples in from separate files that aren't part of the corpus, so questions about exact code can't be answered from it.
-- The answer-correctness grade comes from an LLM judge, which can be wrong; a 30-grade audit found it somewhat lenient on incomplete multi-part answers (see [eval/judge_audit.md](eval/judge_audit.md)), and that audit was not done by the author.
-- The question set is small (30 test, 8 dev) and each number comes from one run of a non-deterministic model, so single questions move the percentages noticeably.
+- The answer-correctness grade comes from an LLM judge, which can be wrong; a 30-grade audit found it somewhat lenient on incomplete multi-part answers (see [eval/judge_audit.md](eval/judge_audit.md), which audited the earlier single run), and that audit was not done by the author.
+- The question set is small (30 test, 8 dev), so single questions move the percentages noticeably. The model is not deterministic even at temperature 0, but across three runs the results varied by at most one question, so the figures above are stable; they are still only as broad as these 30 questions.
 - The test corpus is public documentation that a plain LLM may have memorised, which makes the plain-LLM baseline look better than it would on private documents.
 - The retrieval hit check only requires a passage from the right document, not the exact passage.
 - "Hedged" answers that say the documents don't cover a topic, then add a related cited fact, count as answers, not abstentions.

@@ -1,0 +1,22 @@
+{
+  "name": "FastAPI documentation",
+  "note": "MIT licensed",
+  "tagline": "Grounded Q&A over the FastAPI docs",
+  "examples": [
+    {
+      "tag": "Answered",
+      "kind": "answered",
+      "question": "Which Python package must be installed to receive uploaded files?"
+    },
+    {
+      "tag": "Multiple sources",
+      "kind": "multi",
+      "question": "How do I run FastAPI in a Docker container behind a proxy like Traefik so redirects use the right URL?"
+    },
+    {
+      "tag": "Try something it can't answer",
+      "kind": "abstain",
+      "question": "How do I add pagination to a list endpoint?"
+    }
+  ]
+}

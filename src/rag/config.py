@@ -34,7 +34,7 @@ def load_settings() -> Settings:
         llm_model=os.getenv("LLM_MODEL", ""),
         embedding_model=os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2"),
         top_k=int(os.getenv("TOP_K", "5")),
-        min_score=float(os.getenv("MIN_SCORE", "0.3")),
+        min_score=float(os.getenv("MIN_SCORE", "0.42")),
         max_retries=int(os.getenv("MAX_RETRIES", "2")),
         chunk_size=int(os.getenv("CHUNK_SIZE", "150")),
         chunk_overlap=int(os.getenv("CHUNK_OVERLAP", "20")),

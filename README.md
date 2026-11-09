@@ -9,6 +9,25 @@ Ask questions about a set of documents and get answers that are **backed by quot
 
 ---
 
+## Demo
+
+Real screenshots of the web UI running on the FastAPI documentation. Every answer shows its proof: the exact quote, highlighted inside the source passage it came from, with the relevance gate's decision and the retrieved passages underneath.
+
+![An answered question: status, confidence, the claim, and the quote highlighted in its source passage](docs/screenshots/demo-answered.png)
+
+When the documents don't cover a question, it says so. Here the relevance gate stopped it before any model was called:
+
+![An abstained question: the best match is below the relevance threshold, so no model call was made](docs/screenshots/demo-abstained.png)
+
+<details>
+<summary>Dark theme</summary>
+
+![The answered state in the dark theme](docs/screenshots/demo-dark.png)
+
+</details>
+
+To run it yourself: `pip install -e ".[api]"`, then `uvicorn rag.api:create_default_app --factory --port 8000` and open http://localhost:8000 (see [Quick start](#quick-start)).
+
 ## The problem
 
 AI chatbots are confident even when they're wrong. Ask one about your documents and it may invent an answer that sounds right. Giving the model relevant passages first (retrieval-augmented generation, or RAG) helps, but it still makes things up when the passages don't contain the answer.
@@ -134,18 +153,12 @@ pip install -e ".[web]"
 WEB_FALLBACK=true python -m rag ask "how do I add rate limiting?"   # or set WEB_FALLBACK=true in .env
 ```
 
-Optional web UI: ask a question and see each cited quote highlighted in its source passage.
-
-```bash
-pip install -e ".[ui]"
-streamlit run src/rag/ui.py
-```
-
-HTTP API and Docker (the index and `.env` are mounted, never baked into the image):
+Web UI and HTTP API (one server: the page is at `/`, the JSON API behind it). The index and `.env` are mounted, never baked into the Docker image:
 
 ```bash
 pip install -e ".[api]"
 uvicorn rag.api:create_default_app --factory --port 8000
+# open http://localhost:8000   (or call the API directly:)
 curl -X POST localhost:8000/ask -H 'Content-Type: application/json' \
      -d '{"question": "how do background tasks work?"}'
 
@@ -153,7 +166,24 @@ docker build -t rag-agent .
 docker run --rm -p 8000:8000 --env-file .env -v "$PWD/data:/app/data" rag-agent
 ```
 
-`POST /ask` returns the status, answer, confidence, claims with their verified quotes and sources, the retrieved passages, the gate decision, latency and tokens. `GET /health` is a liveness check. Set `RAG_API_KEY` to require an `X-API-Key` header, which you should do for any deployment reachable from the internet, since every request spends LLM quota. The image is about 2.8 GB (PyTorch and the ML libraries); the embedding model is baked in so the first request doesn't download it.
+`GET /` is the web UI (plain HTML, CSS and JavaScript in [src/rag/web](src/rag/web), no build step; it follows the system light or dark theme and works on a phone). `POST /ask` returns the status, answer, confidence, claims with their verified quotes (each with its source passage and where the quote sits in it), the retrieved passages, the relevance gate's decision and threshold, whether a model was called, latency and tokens. `GET /corpus` describes what is indexed (the UI's sidebar and example questions come from it). `GET /health` is a liveness check. Set `RAG_API_KEY` to require an `X-API-Key` header, which you should do for any deployment reachable from the internet, since every request spends LLM quota. The image is about 2.8 GB (PyTorch and the ML libraries); the embedding model is baked in so the first request doesn't download it.
+
+A minimal alternative UI built with Streamlit:
+
+```bash
+pip install -e ".[ui]"
+streamlit run src/rag/ui.py
+```
+
+**Use your own documents.** Put PDF (with real text, not scans) or Markdown files in any folder, give them their own index, and ask. `CHROMA_COLLECTION=mine` selects a separate index, so the FastAPI one is untouched:
+
+```bash
+CHROMA_COLLECTION=mine python -m rag ingest path/to/my_docs
+CHROMA_COLLECTION=mine python -m rag ask "your question"
+CHROMA_COLLECTION=mine TOP_K=10 uvicorn rag.api:create_default_app --factory --port 8000
+```
+
+The passages that answer a question are sent to your LLM provider, so don't use confidential documents unless that is acceptable. For the web UI to show a name and example questions for your documents, add a `CORPUS.json` and point `CORPUS_MANIFEST` at it (see [data/raw/CORPUS.json](data/raw/CORPUS.json)); without one the page still works and shows "Indexed documents".
 
 Evaluation and tuning:
 
@@ -240,4 +270,4 @@ Model `gemini-3.5-flash-lite`, `MIN_SCORE=0.42`, top-k 5. Three independent runs
 
 ## Built with
 
-Python · ChromaDB · Pydantic · sentence-transformers · Google Gemini / Anthropic Claude · Streamlit (optional UI) · FastAPI + Docker (optional API) · GitHub Actions CI · pytest
+Python · ChromaDB · Pydantic · sentence-transformers · Google Gemini / Anthropic Claude · FastAPI · plain HTML/CSS/JavaScript front end · Docker · GitHub Actions CI · pytest and Node tests · Streamlit (optional alternative UI)

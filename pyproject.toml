@@ -27,6 +27,9 @@ web = ["ddgs>=9.0"]
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+rag = ["web/*"]   # the web UI (HTML, CSS, JS) ships inside the package
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = ["live: calls real LLM/embedding services (skipped by default)"]

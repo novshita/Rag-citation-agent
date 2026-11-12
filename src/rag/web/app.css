@@ -133,7 +133,8 @@ code, .mono { font-family: var(--mono); }
 .pill { display: inline-block; font-size: 12px; font-weight: 500; padding: 3px 10px; border-radius: 99px; background: var(--accent-soft); color: var(--accent-text); border: 1px solid var(--border); }
 h1.hero-title { font-size: 34px; line-height: 1.15; letter-spacing: -0.02em; margin: 18px 0 12px; font-weight: 750; }
 .hero-text { font-size: 16.5px; color: var(--text-2); margin: 0 0 22px; }
-.features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 32px; }
+.features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 32px 0 0; }
+.features[hidden] { display: none; }
 .feature { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; box-shadow: var(--shadow); }
 .feature svg { color: var(--accent); }
 .feature h3 { margin: 10px 0 4px; font-size: 13.5px; }

@@ -6,10 +6,11 @@
   POST /ask       a cited answer as JSON
   GET  /corpus    what is indexed: name, grouped file list, example questions, settings the UI shows
   GET  /health    liveness check
+  POST /auth/signup, /auth/login, /auth/guest, /auth/logout    and   GET /auth/me     (see rag/auth.py)
 
-Set RAG_API_KEY to require an `X-API-Key` header on /ask. That protects API callers; the browser UI
-cannot hold a secret, so a deployment that must stay open to visitors needs rate limits instead.
-Every request spends LLM quota either way.
+With accounts on (the default for create_default_app), /ask needs a signed-in or guest session and counts
+against a daily limit; AUTH_ENABLED=0 turns that off for local use. RAG_API_KEY lets API callers skip the
+session by sending an `X-API-Key` header. Every request spends LLM quota either way.
 """
 
 import os
@@ -17,15 +18,22 @@ import secrets
 import time
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from rag.auth import AuthError, AuthService, Session
 from rag.highlight import find_quote
 from rag.pipeline import PipelineResult
 
 WEB_DIR = Path(__file__).parent / "web"
+SESSION_COOKIE = "rag_session"
+
+
+class Credentials(BaseModel):
+    email: str = Field(max_length=254)
+    password: str = Field(max_length=1000)         # bounded so a huge body can't make hashing expensive; the real rule is in auth.py
 
 
 class AskRequest(BaseModel):
@@ -138,13 +146,37 @@ def create_app(
     min_score: float = 0.0,
     corpus: dict | None = None,
     serve_ui: bool = True,
+    auth: AuthService | None = None,
+    cookie_secure: bool = False,
 ) -> FastAPI:
     """`ask(question, top_k) -> PipelineResult` is passed in so tests can use a fake."""
     app = FastAPI(title="RAG Citation Agent", description="Answers only from the indexed documents, with verified quotes.")
 
-    def check_key(x_api_key: str | None = Header(default=None)) -> None:
-        if api_key and not (x_api_key and secrets.compare_digest(x_api_key, api_key)):
-            raise HTTPException(status_code=401, detail="missing or invalid X-API-Key")
+    def address(request: Request) -> str:
+        return request.client.host if request.client else "unknown"
+
+    def session_of(request: Request) -> Session | None:
+        return auth.read(request.cookies.get(SESSION_COOKIE)) if auth else None
+
+    def start_session(request: Request, response: Response, session: Session) -> dict:
+        response.set_cookie(SESSION_COOKIE, auth.issue(session), max_age=auth.session_seconds, httponly=True,
+                            samesite="lax", secure=cookie_secure or request.url.scheme == "https", path="/")
+        response.headers["Cache-Control"] = "no-store"
+        return describe(session)
+
+    def describe(session: Session | None) -> dict:
+        if auth is None:     # accounts are off: everyone is let in
+            return {"enabled": False, "authenticated": True, "kind": None, "email": None, "remaining": None,
+                    "limit": None, "user_limit": None, "guest_limit": None}
+        if session is None:
+            return {"enabled": True, "authenticated": False, "kind": None, "email": None, "remaining": None,
+                    "limit": None, "user_limit": auth.user_limit, "guest_limit": auth.guest_limit}
+        return {"enabled": True, "authenticated": True, "kind": session.kind, "email": session.email,
+                "remaining": auth.remaining(session), "limit": auth.limit_for(session), "user_limit": auth.user_limit,
+                "guest_limit": auth.guest_limit}
+
+    def refuse(error: AuthError) -> HTTPException:
+        return HTTPException(status_code=error.status, detail=error.message, headers={"Cache-Control": "no-store"})
 
     @app.get("/health")
     def health() -> dict:
@@ -155,12 +187,62 @@ def create_app(
         return corpus or {"name": "Indexed documents", "note": "", "tagline": "", "pages": 0, "groups": [],
                           "examples": [], "top_k": 5, "min_score": min_score, "llm": ""}
 
-    @app.post("/ask", response_model=AskResponse, dependencies=[Depends(check_key)])
-    def ask_endpoint(request: AskRequest) -> AskResponse:
+    if auth is not None:
+        @app.post("/auth/signup", status_code=201)
+        def signup(body: Credentials, request: Request, response: Response) -> dict:
+            try:
+                return start_session(request, response, auth.signup(body.email, body.password, address(request)))
+            except AuthError as error:
+                raise refuse(error) from None
+
+        @app.post("/auth/login")
+        def login(body: Credentials, request: Request, response: Response) -> dict:
+            try:
+                return start_session(request, response, auth.login(body.email, body.password, address(request)))
+            except AuthError as error:
+                raise refuse(error) from None
+
+        @app.post("/auth/guest")
+        def guest(request: Request, response: Response) -> dict:
+            try:
+                return start_session(request, response, auth.guest(address(request)))
+            except AuthError as error:
+                raise refuse(error) from None
+
+        @app.post("/auth/logout")
+        def logout(response: Response) -> dict:
+            response.delete_cookie(SESSION_COOKIE, path="/")
+            response.headers["Cache-Control"] = "no-store"
+            return {"ok": True}
+
+    @app.get("/auth/me")
+    def me(request: Request, response: Response) -> dict:
+        response.headers["Cache-Control"] = "no-store"
+        return describe(session_of(request))
+
+    @app.post("/ask", response_model=AskResponse)
+    def ask_endpoint(body: AskRequest, request: Request, response: Response,
+                     x_api_key: str | None = Header(default=None)) -> AskResponse:
+        key_ok = bool(api_key and x_api_key and secrets.compare_digest(x_api_key, api_key))
+        session = None
+        if not key_ok:
+            if auth is not None:
+                session = session_of(request)
+                if session is None:
+                    raise HTTPException(status_code=401, detail="Sign in to ask questions.")
+                try:
+                    auth.consume(session, address(request))
+                except AuthError as error:
+                    raise refuse(error) from None
+            elif api_key:
+                raise HTTPException(status_code=401, detail="missing or invalid X-API-Key")
+
         started = time.perf_counter()
         try:
-            result = ask(request.question.strip(), request.top_k)
+            result = ask(body.question.strip(), body.top_k)
         except Exception as error:   # model/provider failures (rate limits, bad key) are upstream problems
+            if session is not None:
+                auth.refund(session, address(request))      # an outage shouldn't use up someone's day
             first_line = (str(error).strip().splitlines() or [""])[0]
             raise HTTPException(status_code=502, detail=f"{type(error).__name__}: {first_line}") from error
         latency_ms = int((time.perf_counter() - started) * 1000)
@@ -170,9 +252,11 @@ def create_app(
 
             conn = connect(log_db)      # one short-lived connection per request: sqlite objects are per-thread
             try:
-                log_query(conn, request.question, result, latency_ms)
+                log_query(conn, body.question, result, latency_ms)
             finally:
                 conn.close()
+        if session is not None:
+            response.headers["X-Questions-Remaining"] = str(auth.remaining(session))
         return to_response(result, latency_ms, min_score)
 
     if serve_ui and WEB_DIR.is_dir():
@@ -200,5 +284,20 @@ def create_default_app() -> FastAPI:
     )
     return create_app(
         build_ask(settings), api_key=os.getenv("RAG_API_KEY") or None, log_db=settings.log_db,
-        min_score=settings.min_score, corpus=info,
+        min_score=settings.min_score, corpus=info, auth=default_auth(), cookie_secure=os.getenv("COOKIE_SECURE") == "1",
+    )
+
+
+def default_auth() -> AuthService | None:
+    """Accounts and daily limits from the environment; AUTH_ENABLED=0 runs the app open, for local use."""
+    if os.getenv("AUTH_ENABLED", "1") == "0":
+        return None
+    secret = os.getenv("SESSION_SECRET", "")
+    if len(secret) < 16:
+        print("SESSION_SECRET is not set (or is shorter than 16 characters): using a random one, "
+              "so everyone is signed out whenever the server restarts.")
+        secret = secrets.token_urlsafe(32)
+    return AuthService(
+        os.getenv("AUTH_DB", "data/auth.sqlite"), secret,
+        guest_limit=int(os.getenv("GUEST_DAILY_LIMIT", "5")), user_limit=int(os.getenv("USER_DAILY_LIMIT", "30")),
     )

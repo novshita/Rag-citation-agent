@@ -1,59 +1,15 @@
 // RAG Citation Agent: front end. Plain JavaScript, no build step.
+// Pages: landing (#/), login (#/login), the product (#/app) and the evaluation (#/evaluation).
 // All text from the server is inserted with textContent, never as HTML, so a document passage
-// cannot inject markup. The only innerHTML below is the fixed icon set.
+// cannot inject markup. The only innerHTML in the front end is the fixed icon set in dom.js.
 
 import {
   barPercent, errorInfo, excerpt, formatMeta, gateLabel, gateReason, plural, splitHighlight, statusInfo, verifiedLabel,
 } from "./format.js";
-
-/* ---------- tiny DOM helpers ---------- */
-
-const ICONS = {
-  folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
-  file: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>',
-  search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
-  arrow: '<path d="M5 12h14"/><path d="m13 6 6 6-6 6"/>',
-  book: '<path d="M2 5h7a3 3 0 0 1 3 3v12a2 2 0 0 0-2-2H2z"/><path d="M22 5h-7a3 3 0 0 0-3 3v12a2 2 0 0 1 2-2h8z"/>',
-  shield: '<path d="M12 3 4 6v6c0 4.5 3.2 8 8 9 4.8-1 8-4.5 8-9V6z"/><path d="m9 12 2 2 4-4"/>',
-  minus: '<circle cx="12" cy="12" r="9"/><path d="M8 12h8"/>',
-  check: '<circle cx="12" cy="12" r="9"/><path d="m8.5 12.5 2.5 2.5 4.5-5"/>',
-  tick: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
-  alert: '<path d="M12 3 2 20h20z"/><path d="M12 10v4"/><path d="M12 17.5v.01"/>',
-  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.5v.01"/>',
-  alertc: '<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5"/><path d="M12 16v.01"/>',
-  cpu: '<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/>',
-  chevron: '<path d="m6 9 6 6 6-6"/>',
-};
-
-function icon(name, size = 16) {
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", "0 0 24 24");
-  svg.setAttribute("width", size);
-  svg.setAttribute("height", size);
-  svg.setAttribute("fill", "none");
-  svg.setAttribute("stroke", "currentColor");
-  svg.setAttribute("stroke-width", "2");
-  svg.setAttribute("stroke-linecap", "round");
-  svg.setAttribute("stroke-linejoin", "round");
-  svg.setAttribute("aria-hidden", "true");
-  svg.innerHTML = ICONS[name] || "";
-  return svg;
-}
-
-/** h("div", {class: "x", onclick: fn}, "text", childNode, ...) */
-function h(tag, attrs = {}, ...children) {
-  const node = document.createElement(tag);
-  for (const [key, value] of Object.entries(attrs || {})) {
-    if (value == null || value === false) continue;
-    if (key.startsWith("on") && typeof value === "function") node.addEventListener(key.slice(2), value);
-    else node.setAttribute(key, value === true ? "" : value);
-  }
-  for (const child of children.flat()) {
-    if (child == null || child === false) continue;
-    node.append(child.nodeType ? child : document.createTextNode(String(child)));
-  }
-  return node;
-}
+import { h, icon } from "./dom.js";
+import { guard, parseRoute, quotaText, whoLabel } from "./flow.js";
+import { buildLanding } from "./landing.js";
+import { buildLogin } from "./login.js";
 
 /* ---------- state ---------- */
 
@@ -66,7 +22,10 @@ const state = {
   error: null,
   controller: null,
   expanded: new Set(),
+  showcase: [],   // example pages for the "page to proof" demo (static/showcase.json)
+  me: { enabled: false, authenticated: true, kind: null, email: null, remaining: null, limit: null, user_limit: null, guest_limit: null },
 };
+let page = null;   // the page on screen, so its animation can be stopped when the visitor leaves
 
 const ui = {}; // elements of the ask view, set when it is built
 
@@ -146,16 +105,13 @@ function buildAskView() {
   const main = document.getElementById("main");
   const c = state.corpus;
 
+  ui.quota = h("p", { class: "hint quota", "aria-live": "polite" });
+  paintQuota();
   ui.hero = h("section", { class: "hero" },
     h("span", { class: "pill" }, c.tagline || "Grounded question answering"),
     h("h1", { class: "hero-title" }, "Ask the documents. See the proof."),
     h("p", { class: "hero-text" },
       "Every answer is written only from passages in the indexed documents. Every quote is checked against its source by code, not by AI. If the documents don't say, it says so."),
-    h("div", { class: "features" },
-      feature("book", "Only your documents", "No outside knowledge. Answers use retrieved passages only."),
-      feature("shield", "Every quote verified", "Code checks each quote against its source. Fake quotes are removed."),
-      feature("minus", "Refuses to guess", "If no passage is relevant enough, it stops. No model is called."),
-    ),
   );
 
   ui.input = h("input", { id: "question", name: "question", type: "text", autocomplete: "off", maxlength: "2000",
@@ -167,6 +123,7 @@ function buildAskView() {
       h("div", { class: "input-wrap" }, icon("search", 18), ui.input),
       ui.button),
     h("p", { class: "hint", id: "ask-hint" }, "Press Enter to ask. Answers come only from the indexed documents."),
+    ui.quota,
   );
 
   ui.examples = c.examples.length
@@ -186,8 +143,8 @@ function buildAskView() {
   paintResult();
 }
 
-function feature(name, title, text) {
-  return h("div", { class: "feature" }, icon(name, 20), h("h3", {}, title), h("p", {}, text));
+function paintQuota() {
+  if (ui.quota) ui.quota.textContent = quotaText(state.me);
 }
 
 async function ask(raw) {
@@ -211,13 +168,22 @@ async function ask(raw) {
       const detail = Array.isArray(body.detail) ? "" : body.detail;
       throw Object.assign(new Error(detail || "request failed"), { status: response.status, detail });
     }
+    const remaining = response.headers.get("X-Questions-Remaining");
+    if (remaining !== null) state.me.remaining = Number(remaining);
     state.result = await response.json();
     state.phase = "done";
   } catch (error) {
     if (error.name === "AbortError") return;
+    if (error.status === 401 && state.me.enabled) {      // the session ended: sign in again
+      state.me = { ...state.me, authenticated: false };
+      location.hash = "#/login";
+      return;
+    }
+    if (error.status === 429) await refreshMe();          // show the real count
     state.error = errorInfo(error.status ?? 0, error.detail);
     state.phase = "error";
   }
+  paintQuota();
   paintResult();
 }
 
@@ -425,31 +391,103 @@ function buildEvaluationView() {
   ));
 }
 
+/* ---------- session ---------- */
+
+async function refreshMe() {
+  try {
+    const response = await fetch("/auth/me", { cache: "no-store" });
+    if (response.ok) state.me = await response.json();
+  } catch { /* keep what we had; the next request will show a real error */ }
+}
+
+/** POST JSON. Resolves to the reply; throws an Error whose message is fit to show on the login form. */
+async function post(path, body) {
+  let response;
+  try {
+    response = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  } catch {
+    throw new Error("Couldn't reach the server. Check your connection and try again.");
+  }
+  const reply = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(typeof reply.detail === "string" ? reply.detail : "Something went wrong. Please check the fields and try again.");
+  }
+  return reply;
+}
+
+function renderAccount() {
+  const slot = document.getElementById("account");
+  const who = whoLabel(state.me);
+  if (!state.me.enabled) { slot.replaceChildren(); return; }
+  if (!who) {
+    slot.replaceChildren(h("a", { class: "signin", href: "#/login" }, "Sign in"));
+    return;
+  }
+  slot.replaceChildren(
+    h("a", { class: "signin", href: "#/app" }, "Demo"),
+    h("span", { class: "who", title: who }, who),
+    h("button", { class: "link-btn", type: "button", onclick: signOut }, "Sign out"));
+}
+
+async function signOut() {
+  try { await fetch("/auth/logout", { method: "POST" }); } catch { /* the cookie expires on its own */ }
+  state.phase = "idle";
+  state.result = null;
+  state.question = "";
+  await refreshMe();
+  renderAccount();
+  location.hash = "#/";
+  route();
+}
+
 /* ---------- routing and start ---------- */
 
 function route() {
-  const evaluation = location.hash.startsWith("#/evaluation");
+  const wanted = parseRoute(location.hash);
+  const redirect = guard(wanted, state.me);
+  if (redirect) { location.replace(redirect); return; }   // the hashchange this causes draws the right page
+
+  page?.destroy?.();
+  page = null;
+  ui.result = null;
+  document.body.dataset.view = wanted;
   document.body.classList.remove("nav-open");
   document.getElementById("menu-btn").setAttribute("aria-expanded", "false");
-  document.getElementById("nav-eval").setAttribute("aria-current", evaluation ? "page" : "false");
-  if (evaluation) {
-    ui.result = null;
-    buildEvaluationView();
-    window.scrollTo(0, 0);
-  } else {
+  document.getElementById("nav-eval").setAttribute("aria-current", wanted === "evaluation" ? "page" : "false");
+  renderAccount();
+  const main = document.getElementById("main");
+
+  if (wanted === "app") {
+    renderSidebar();
     buildAskView();
+  } else if (wanted === "evaluation") {
+    buildEvaluationView();
+  } else if (wanted === "login") {
+    page = buildLogin({
+      me: state.me, api: post,
+      onDone: (me) => { state.me = me; renderAccount(); location.hash = "#/app"; },
+    });
+    main.replaceChildren(page.element);
+    page.focus();
+  } else {
+    page = buildLanding({ corpus: state.corpus, showcase: state.showcase, me: state.me });
+    main.replaceChildren(page.element);
   }
+  window.scrollTo(0, 0);
 }
 
 async function start() {
-  try {
-    const response = await fetch("/corpus");
-    if (response.ok) {
+  await Promise.all([
+    refreshMe(),
+    fetch("/corpus").then(async (response) => {
+      if (!response.ok) return;
       state.corpus = { ...state.corpus, ...(await response.json()) };
       state.topK = state.corpus.top_k || 5;
-    }
-  } catch { /* the page still works with defaults if the corpus call fails */ }
-  renderSidebar();
+    }).catch(() => { /* the page still works with defaults if the corpus call fails */ }),
+    fetch("/static/showcase.json").then(async (response) => {
+      if (response.ok) state.showcase = (await response.json()).cards || [];
+    }).catch(() => { /* the animation is optional */ }),
+  ]);
   route();
   window.addEventListener("hashchange", route);
   document.getElementById("menu-btn").addEventListener("click", () => {

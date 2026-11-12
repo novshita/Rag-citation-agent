@@ -1,0 +1,70 @@
+{
+  "cards": [
+    {
+      "doc": "tutorial/request-files.md",
+      "title": "Request Files",
+      "paragraphs": [
+        "You can define files to be uploaded by the client using File.",
+        "To receive uploaded files, first install python-multipart.",
+        "Add it to your project:"
+      ],
+      "code": "$ uv add python-multipart",
+      "question": "Which Python package must be installed to receive uploaded files?",
+      "quote": "To receive uploaded files, first install python-multipart.",
+      "page_words": 993,
+      "quote_words": 7
+    },
+    {
+      "doc": "deployment/docker.md",
+      "title": "FastAPI in Containers - Docker",
+      "paragraphs": [
+        "then you will probably want to handle replication at the cluster level instead of using a process manager (like Uvicorn with workers) in each container.",
+        "In this type of scenario, you probably would want to have a single (Uvicorn) process per container, as you would already be handling replication at the cluster level."
+      ],
+      "code": null,
+      "question": "Should I use workers inside each container on Kubernetes?",
+      "quote": "handle replication at the cluster level instead of using a process manager (like Uvicorn with workers) in each container",
+      "page_words": 4238,
+      "quote_words": 19
+    },
+    {
+      "doc": "tutorial/background-tasks.md",
+      "title": "Background Tasks",
+      "paragraphs": [
+        "You can define background tasks to be run after returning a response.",
+        "As connecting to an email server and sending an email tends to be \"slow\" (several seconds), you can return the response right away and send the email notification in the background."
+      ],
+      "code": null,
+      "question": "Can I send an email after the response has been returned?",
+      "quote": "you can return the response right away and send the email notification in the background",
+      "page_words": 706,
+      "quote_words": 15
+    },
+    {
+      "doc": "advanced/behind-a-proxy.md",
+      "title": "Behind a Proxy",
+      "paragraphs": [
+        "In many situations, you would use a proxy like Traefik or Nginx in front of your FastAPI app.",
+        "But for security, as the server doesn't know it is behind a trusted proxy, it won't interpret those headers."
+      ],
+      "code": null,
+      "question": "Why does my app ignore the proxy's forwarded headers?",
+      "quote": "as the server doesn't know it is behind a trusted proxy, it won't interpret those headers",
+      "page_words": 1997,
+      "quote_words": 16
+    },
+    {
+      "doc": "tutorial/handling-errors.md",
+      "title": "Handling Errors",
+      "paragraphs": [
+        "There are many situations in which you need to report an error to a client that is using your API.",
+        "In these cases, you would normally return an HTTP status code in the range of 400 (from 400 to 499)."
+      ],
+      "code": null,
+      "question": "Which range of HTTP status codes means the client made an error?",
+      "quote": "return an HTTP status code in the range of 400 (from 400 to 499)",
+      "page_words": 1304,
+      "quote_words": 14
+    }
+  ]
+}

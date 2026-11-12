@@ -57,9 +57,10 @@ test("gateLabel explains both outcomes", () => {
 
 test("errorInfo gives a friendly message for each failure", () => {
   assert.match(errorInfo(502, "ClientError: 429 RESOURCE_EXHAUSTED quota").title, /rate limit/);
-  assert.match(errorInfo(429, "").title, /rate limit/);
+  assert.match(errorInfo(429, "Daily question limit reached (5 a day for guests).").title, /Daily question limit/);   // our own limit, shown as written
+  assert.match(errorInfo(429, "").title, /Too many requests/);
   assert.match(errorInfo(0, "").title, /reach the server/);
-  assert.match(errorInfo(401, "").title, /access key/);
+  assert.match(errorInfo(401, "").title, /session has ended/);
   assert.match(errorInfo(422, "").title, /enter a question/);
   assert.equal(errorInfo(500, "boom").hint, "boom");
   assert.equal(errorInfo(404, undefined).hint, "");

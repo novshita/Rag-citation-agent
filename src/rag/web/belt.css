@@ -1,0 +1,88 @@
+/* "Page to proof" belt. Uses the app's colour tokens, so it follows light and dark themes. */
+
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+.belt-demo { max-width: 1100px; margin: 0 auto 32px; }
+.belt-demo[hidden] { display: none; }
+
+.belt-head { max-width: 640px; margin: 0 auto 12px; display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
+.belt-eyebrow { margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-3); }
+.belt-title { margin: 3px 0 0; font-size: 20px; line-height: 1.25; font-weight: 700; letter-spacing: -0.01em; }
+.belt-pause {
+  flex: none; font: inherit; font-size: 12.5px; font-weight: 500; color: var(--text-2); cursor: pointer;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: 99px; padding: 4px 14px;
+}
+.belt-pause:hover { border-color: var(--accent); color: var(--accent-text); }
+.belt-note { margin: 10px 0 0; text-align: center; font-size: 12.5px; color: var(--text-3); }
+
+.belt {
+  --cw: 420px; --ch: 277px;
+  position: relative; overflow: hidden; width: 100%;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 16px;
+  cursor: grab; touch-action: pan-y; user-select: none; -webkit-user-select: none;
+}
+.belt.grabbing { cursor: grabbing; }
+
+.codes, .cards { position: absolute; inset: 0; }
+/* the proof fades out towards the left edge, so old quotes dissolve into the page as they leave */
+.codes { -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 24%); mask-image: linear-gradient(90deg, transparent 0, #000 24%); }
+
+.card-slot, .code-slot {
+  position: absolute; top: 64px; left: 0; width: var(--cw); height: var(--ch);
+  container-type: inline-size; will-change: transform, clip-path;
+}
+.card-slot { border-radius: 14px; overflow: hidden; background: var(--surface); border: 1px solid var(--border); box-shadow: 0 6px 24px rgba(16, 24, 40, 0.08); }
+.code-slot { visibility: hidden; }
+
+/* ---- the page, as a visitor would see it (sizes in cqw: 1cqw is 1% of the card width) ---- */
+.pg { position: relative; height: 100%; overflow: hidden; }
+.pg-bar { display: flex; align-items: center; gap: 2cqw; height: 7.4cqw; padding: 0 3cqw; background: var(--surface-2); border-bottom: 1px solid var(--border); }
+.pg-dots { display: flex; gap: 1cqw; }
+.pg-dots i { width: 1.6cqw; height: 1.6cqw; border-radius: 50%; background: var(--border-strong); }
+.pg-url { min-width: 0; padding: 0.7cqw 2cqw; font: max(8px, 2cqw) var(--mono); color: var(--text-3); background: var(--surface); border-radius: 99px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-body { padding: 3.4cqw 4cqw 0; }
+.pg-kicker { margin: 0 0 1cqw; font: max(8px, 1.8cqw) var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-text); }
+.pg-title { margin-bottom: 2cqw; font-size: 5cqw; line-height: 1.15; font-weight: 750; letter-spacing: -0.02em; color: var(--text); }
+.pg-p { margin: 0 0 1.6cqw; font-size: max(9.5px, 2.5cqw); line-height: 1.5; color: var(--text-2); }
+.pg-p mark { background: var(--mark-bg); color: var(--mark-text); border-radius: 0.5cqw; padding: 0 0.3cqw; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+.pg-code { margin: 0 0 2cqw; padding: 1.4cqw 2cqw; font: max(9px, 2.3cqw) var(--mono); color: var(--text); background: var(--surface-2); border: 1px solid var(--border); border-radius: 1cqw; overflow: hidden; }
+.pg-skel { display: grid; gap: 1.5cqw; margin-top: 2.4cqw; }
+.pg-skel i { display: block; height: 1.5cqw; border-radius: 99px; background: var(--surface-3); }
+.pg-skel i:nth-child(1) { width: 92%; }
+.pg-skel i:nth-child(2) { width: 78%; }
+.pg-skel i:nth-child(3) { width: 58%; }
+.pg-foot { position: absolute; left: 4cqw; right: 4cqw; bottom: 0; margin: 0; padding: 1.6cqw 0 2.2cqw; font: max(8px, 1.9cqw) var(--mono); color: var(--text-3); background: linear-gradient(transparent, var(--surface) 38%); }
+
+/* ---- what it turns into: the question, the exact quote, and the check ---- */
+.pf { padding: 3.6cqw 4cqw; }
+.pf-label { margin: 0 0 1cqw; font: max(8.5px, 2cqw) var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); white-space: nowrap; }
+.pf-q { margin: 0 0 3.6cqw; font-size: max(10.5px, 3cqw); line-height: 1.4; color: var(--text-2); }
+.pf-quote { margin: 0; font-size: max(12px, 3.5cqw); line-height: 1.45; font-weight: 600; color: var(--text); }
+.pf-quote mark { background: var(--mark-bg); color: var(--mark-text); border-radius: 0.6cqw; padding: 0 0.4cqw; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+.pf-ok { margin: 3cqw 0 0; font: max(9px, 2.2cqw) var(--mono); color: var(--ok-text); }
+
+/* ---- the scanner ---- */
+.scan { position: absolute; left: 50%; top: 50px; height: calc(var(--ch) + 40px); width: 0; z-index: 3; pointer-events: none; }
+.scan i {
+  position: absolute; left: -2px; top: 0; bottom: 0; width: 4px; border-radius: 4px;
+  background: linear-gradient(180deg, var(--accent-hover), var(--accent) 12%, var(--accent) 88%, var(--accent-hover));
+  box-shadow: 0 0 10px 2px color-mix(in srgb, var(--accent) 80%, transparent), 0 0 34px 10px color-mix(in srgb, var(--accent) 34%, transparent);
+}
+.scan b {
+  position: absolute; left: 2px; top: 4%; height: 92%; width: 42px; filter: blur(6px);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 50%, transparent), transparent);
+}
+.fx { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
+
+/* ---- the counter on the line ---- */
+.counter { position: absolute; left: 50%; top: 8px; transform: translateX(-50%); z-index: 4; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
+.counter-label { font-size: 11.5px; color: var(--text-3); white-space: nowrap; }
+.counter-pill { display: flex; height: 26px; border-radius: 99px; overflow: hidden; font: 500 12.5px var(--mono); box-shadow: 0 0 18px color-mix(in srgb, var(--accent) 40%, transparent); }
+.counter-num { display: flex; align-items: center; justify-content: flex-end; min-width: 4.4ch; padding: 0 11px 0 13px; background: var(--accent); color: #fff; font-variant-numeric: tabular-nums; }
+.counter-of { display: flex; align-items: center; padding: 0 12px 0 10px; background: var(--accent-soft); color: var(--accent-text); font-size: 11px; white-space: nowrap; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .counter-num { color: #0b0f17; } }
+
+@media (max-width: 560px) {
+  .belt-title { font-size: 17px; }
+  .codes { -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 30%); mask-image: linear-gradient(90deg, transparent 0, #000 30%); }
+}

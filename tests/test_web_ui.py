@@ -23,11 +23,13 @@ def test_every_javascript_import_resolves():
 
 
 def test_server_text_is_never_inserted_as_html():
-    """Document passages come from outside; they must only ever be set as text."""
-    source = (WEB / "app.js").read_text()
-    uses = [line.strip() for line in source.splitlines() if "innerHTML" in line and not line.strip().startswith("//")]
-    assert uses == ["svg.innerHTML = ICONS[name] || \"\";"]      # only the fixed icon set
-    assert "insertAdjacentHTML" not in source and "document.write" not in source
+    """Document passages and user input come from outside; they must only ever be set as text."""
+    uses = []
+    for js in sorted(WEB.glob("*.js")):
+        source = js.read_text()
+        assert "insertAdjacentHTML" not in source and "document.write" not in source, js.name
+        uses += [(js.name, line.strip()) for line in source.splitlines() if "innerHTML" in line and not line.strip().startswith("//")]
+    assert uses == [("dom.js", "svg.innerHTML = ICONS[name] || \"\";")]      # only the fixed icon set
 
 
 def test_the_page_has_the_basics_for_accessibility_and_sharing():
@@ -39,7 +41,7 @@ def test_the_page_has_the_basics_for_accessibility_and_sharing():
 @pytest.mark.skipif(shutil.which("node") is None, reason="Node.js is not installed")
 def test_javascript_unit_tests_pass():
     result = subprocess.run(
-        ["node", "--test", "tests/js/format.test.mjs"],
+        ["node", "--test", "tests/js/format.test.mjs", "tests/js/belt-math.test.mjs", "tests/js/flow.test.mjs"],
         cwd=Path(__file__).parent.parent, capture_output=True, text=True, timeout=120,
     )
     assert result.returncode == 0, result.stdout + result.stderr

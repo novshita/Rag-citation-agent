@@ -11,6 +11,10 @@ Ask questions about a set of documents and get answers that are **backed by quot
 
 ## Demo
 
+The landing page shows how it works as a live animation. Real pages from the indexed documents drift past a scanner, dissolve, and turn into the exact quote the system cites, with the count of cited words against the words on the page. The pages, quotes and counts come from the real documents, and a test checks every quote against its source file. It pauses on request and respects reduced-motion settings.
+
+![The page-to-proof animation: a documentation page dissolves at a scanner line and becomes its verified quote](docs/screenshots/demo-belt.png)
+
 Real screenshots of the web UI running on the FastAPI documentation. Every answer shows its proof: the exact quote, highlighted inside the source passage it came from, with the relevance gate's decision and the retrieved passages underneath.
 
 ![An answered question: status, confidence, the claim, and the quote highlighted in its source passage](docs/screenshots/demo-answered.png)
@@ -26,7 +30,7 @@ When the documents don't cover a question, it says so. Here the relevance gate s
 
 </details>
 
-To run it yourself: `pip install -e ".[api]"`, then `uvicorn rag.api:create_default_app --factory --port 8000` and open http://localhost:8000 (see [Quick start](#quick-start)).
+To run it yourself: `pip install -e ".[api]"`, then `uvicorn rag.api:create_default_app --factory --port 8000` and open http://localhost:8000 (see [Quick start](#quick-start)). The site has three steps: a landing page (with the animation above), a login page (sign in, create an account, or continue as a guest), and then the product.
 
 ## The problem
 
@@ -166,7 +170,7 @@ docker build -t rag-agent .
 docker run --rm -p 8000:8000 --env-file .env -v "$PWD/data:/app/data" rag-agent
 ```
 
-`GET /` is the web UI (plain HTML, CSS and JavaScript in [src/rag/web](src/rag/web), no build step; it follows the system light or dark theme and works on a phone). `POST /ask` returns the status, answer, confidence, claims with their verified quotes (each with its source passage and where the quote sits in it), the retrieved passages, the relevance gate's decision and threshold, whether a model was called, latency and tokens. `GET /corpus` describes what is indexed (the UI's sidebar and example questions come from it). `GET /health` is a liveness check. Set `RAG_API_KEY` to require an `X-API-Key` header, which you should do for any deployment reachable from the internet, since every request spends LLM quota. The image is about 2.8 GB (PyTorch and the ML libraries); the embedding model is baked in so the first request doesn't download it.
+`GET /` is the web UI (plain HTML, CSS and JavaScript in [src/rag/web](src/rag/web), no build step; it follows the system light or dark theme and works on a phone). `POST /ask` returns the status, answer, confidence, claims with their verified quotes (each with its source passage and where the quote sits in it), the retrieved passages, the relevance gate's decision and threshold, whether a model was called, latency and tokens. `GET /corpus` describes what is indexed (the UI's sidebar and example questions come from it). `GET /health` is a liveness check. Accounts and daily limits protect the LLM quota: `/ask` needs a signed-in or guest session (`POST /auth/signup`, `/auth/login`, `/auth/guest`, `/auth/logout`, `GET /auth/me`; see [src/rag/auth.py](src/rag/auth.py)). Passwords are hashed with scrypt, sessions are signed HttpOnly cookies, failed sign-ins are throttled, and each person has a daily question limit (guests 5, accounts 30; a failed question is refunded). Set `SESSION_SECRET` to a long random value so sessions survive restarts, and `COOKIE_SECURE=1` when serving over HTTPS; behind a proxy run uvicorn with `--proxy-headers`. There is no email verification or password reset, on purpose. For local use without accounts, set `AUTH_ENABLED=0`. Scripts can skip the session by sending `X-API-Key` when `RAG_API_KEY` is set. The image is about 2.8 GB (PyTorch and the ML libraries); the embedding model is baked in so the first request doesn't download it.
 
 A minimal alternative UI built with Streamlit:
 

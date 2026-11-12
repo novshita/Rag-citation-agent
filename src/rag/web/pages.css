@@ -1,0 +1,67 @@
+/* Landing page, login page and the account area in the header. Uses the app's colour tokens. */
+
+/* The sidebar and its drawer button belong to the product only. */
+body:not([data-view="app"]) .sidebar { display: none; }
+body:not([data-view="app"]) .menu-btn { display: none !important; }
+
+/* ---- header account area ---- */
+.account { display: inline-flex; align-items: center; gap: 12px; }
+.account:empty { display: none; }
+.signin { font-size: 13.5px; font-weight: 600; }
+.who { max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--text-3); }
+.account .link-btn { font-size: 13px; }
+
+/* white text on the dark theme's pale accent is hard to read, so use the dark background colour there */
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .btn-primary { color: #0b0f17; } }
+
+.btn-link { display: inline-flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; }
+.btn-link:hover { text-decoration: none; }
+.btn-primary.btn-link { color: #fff; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .btn-primary.btn-link { color: #0b0f17; } }
+.btn-secondary.btn-link { height: 46px; padding: 0 22px; font-size: 15px; color: var(--text); }
+
+/* ---- landing ---- */
+.landing { max-width: 1100px; margin: 0 auto; }
+.land-hero { max-width: 720px; margin: 8px auto 36px; text-align: center; }
+.land-title { margin: 18px 0 14px; font-size: clamp(34px, 5vw, 52px); line-height: 1.08; font-weight: 800; letter-spacing: -0.03em; }
+.land-text { max-width: 600px; margin: 0 auto 26px; font-size: 17px; color: var(--text-2); }
+.cta-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+.land-hero .hint { margin-top: 12px; }
+.land-features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; max-width: 860px; margin: 0 auto; }
+.land-proof { max-width: 620px; margin: 36px auto 0; text-align: center; color: var(--text-2); }
+.land-proof p { margin: 0 0 8px; }
+.land-proof a { font-weight: 600; }
+
+/* ---- login ---- */
+.auth-wrap { max-width: 420px; margin: 0 auto; }
+.auth-card { padding: 28px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow); }
+.auth-card h1 { margin: 0 0 6px; font-size: 24px; letter-spacing: -0.02em; }
+.auth-sub { margin: 0 0 20px; color: var(--text-2); }
+.tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; margin-bottom: 18px; padding: 3px; background: var(--surface-2); border-radius: 10px; }
+.tabs button { height: 34px; border: 0; border-radius: 8px; background: transparent; color: var(--text-2); font-weight: 600; }
+.tabs button[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(16, 24, 40, 0.14); }
+.field { margin-bottom: 14px; }
+.field label { display: block; margin-bottom: 6px; font-weight: 600; }
+.field input {
+  width: 100%; height: 44px; padding: 0 12px; font: inherit; font-size: 15px; color: var(--text);
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: 10px;
+}
+.field-hint { margin: 6px 0 0; font-size: 12.5px; color: var(--text-3); }
+.field-hint.center { text-align: center; margin-top: 10px; }
+.form-error { min-height: 20px; margin: 0 0 10px; font-size: 13.5px; color: var(--err-text); }
+.auth-form .btn-primary { width: 100%; }
+.divider { display: flex; align-items: center; gap: 12px; margin: 18px 0; font-size: 12.5px; color: var(--text-3); }
+.divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+.btn-secondary.wide { width: 100%; height: 44px; }
+.fine { margin: 16px 0 0; text-align: center; font-size: 12.5px; color: var(--text-3); }
+.quota { margin-top: 4px; }
+
+@media (max-width: 960px) {
+  .land-features { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .who { display: none; }
+  .auth-card { padding: 22px; }
+  .land-text { font-size: 16px; }
+  .btn-link { width: 100%; }
+}

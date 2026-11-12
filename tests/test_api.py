@@ -132,3 +132,99 @@ def test_the_web_ui_is_served_at_the_root_and_can_be_turned_off():
     assert page.status_code == 200 and "RAG Citation Agent" in page.text
     assert client()[0].get("/static/app.js").status_code == 200
     assert TestClient(create_app(lambda q, k: None, serve_ui=False)).get("/").status_code == 404
+
+
+# ---- accounts, guest sessions and daily limits ----
+
+from rag.auth import AuthService  # noqa: E402
+
+
+def with_auth(tmp_path, ask=None, **kwargs):
+    auth = AuthService(str(tmp_path / "auth.sqlite"), "a-test-secret-that-is-long-enough", guest_limit=2, user_limit=3)
+    c, seen = client(ask, auth=auth, **kwargs)
+    return c, seen, auth
+
+
+def test_ask_needs_a_session_when_accounts_are_on(tmp_path):
+    c, seen, _ = with_auth(tmp_path)
+    response = c.post("/ask", json={"question": "q"})
+    assert response.status_code == 401 and "Sign in" in response.json()["detail"]
+    assert seen == []
+
+
+def test_me_reports_who_is_signed_in(tmp_path):
+    c, _, _ = with_auth(tmp_path)
+    assert c.get("/auth/me").json()["authenticated"] is False
+    c.post("/auth/signup", json={"email": "Ada@Example.com", "password": "longenough1"})
+    me = c.get("/auth/me").json()
+    assert me["authenticated"] and me["kind"] == "user" and me["email"] == "ada@example.com"
+    assert me["remaining"] == 3 and me["limit"] == 3
+
+
+def test_signup_sets_a_secure_cookie_and_logout_clears_it(tmp_path):
+    c, seen, _ = with_auth(tmp_path)
+    response = c.post("/auth/signup", json={"email": "ada@example.com", "password": "longenough1"})
+    assert response.status_code == 201
+    cookie = response.headers["set-cookie"].lower()
+    assert "httponly" in cookie and "samesite=lax" in cookie and "rag_session=" in cookie
+    assert response.headers["cache-control"] == "no-store"
+    assert "longenough1" not in response.text
+
+    assert c.post("/ask", json={"question": "q"}).status_code == 200
+    c.post("/auth/logout")
+    assert c.post("/ask", json={"question": "q"}).status_code == 401
+    assert len(seen) == 1
+
+
+def test_login_errors_are_clear_and_generic(tmp_path):
+    c, _, _ = with_auth(tmp_path)
+    c.post("/auth/signup", json={"email": "ada@example.com", "password": "longenough1"})
+    c.post("/auth/logout")
+    wrong = c.post("/auth/login", json={"email": "ada@example.com", "password": "nope-nope-1"})
+    unknown = c.post("/auth/login", json={"email": "who@example.com", "password": "nope-nope-1"})
+    assert wrong.status_code == unknown.status_code == 401 and wrong.json() == unknown.json()
+    assert c.post("/auth/signup", json={"email": "ada@example.com", "password": "otherpass99"}).status_code == 409
+    assert c.post("/auth/signup", json={"email": "bad", "password": "longenough1"}).status_code == 422
+    assert c.post("/auth/login", json={"email": "ada@example.com", "password": "longenough1"}).status_code == 200
+
+
+def test_guest_session_has_a_daily_limit_and_a_remaining_header(tmp_path):
+    c, seen, _ = with_auth(tmp_path)
+    assert c.post("/auth/guest").json()["kind"] == "guest"
+    first = c.post("/ask", json={"question": "q"})
+    assert first.status_code == 200 and first.headers["x-questions-remaining"] == "1"
+    assert c.post("/ask", json={"question": "q"}).headers["x-questions-remaining"] == "0"
+    blocked = c.post("/ask", json={"question": "q"})
+    assert blocked.status_code == 429 and "free account" in blocked.json()["detail"]
+    assert len(seen) == 2                                         # the blocked question never reached the model
+
+
+def test_a_failed_question_does_not_use_up_the_limit(tmp_path):
+    def broken(question, top_k):
+        raise RuntimeError("RESOURCE_EXHAUSTED: quota")
+
+    c, _, auth = with_auth(tmp_path, ask=broken)
+    c.post("/auth/guest")
+    assert c.post("/ask", json={"question": "q"}).status_code == 502
+    assert c.get("/auth/me").json()["remaining"] == 2
+
+
+def test_a_forged_cookie_is_not_a_session(tmp_path):
+    c, _, _ = with_auth(tmp_path)
+    c.cookies.set("rag_session", "eyJrIjoidXNlciIsInMiOiJ1OjEiLCJlIjo5OTk5OTk5OTk5fQ.forged")
+    assert c.get("/auth/me").json()["authenticated"] is False
+    assert c.post("/ask", json={"question": "q"}).status_code == 401
+
+
+def test_the_api_key_still_lets_scripts_skip_the_session(tmp_path):
+    c, seen, _ = with_auth(tmp_path, api_key="secret")
+    assert c.post("/ask", json={"question": "q"}).status_code == 401
+    assert c.post("/ask", json={"question": "q"}, headers={"X-API-Key": "secret"}).status_code == 200
+    assert len(seen) == 1
+
+
+def test_without_accounts_everyone_is_let_in():
+    c, _ = client()
+    me = c.get("/auth/me").json()
+    assert me["enabled"] is False and me["authenticated"] is True
+    assert c.post("/auth/guest").status_code == 404               # no auth routes exist

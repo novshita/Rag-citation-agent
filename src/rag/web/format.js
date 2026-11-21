@@ -93,6 +93,7 @@ export function errorInfo(status, detail) {
   if (status === 401) return { title: "Your session has ended.", hint: "Sign in again to keep asking questions." };
   if (status === 422) return { title: "Please enter a question (up to 2,000 characters).", hint: "" };
   // 429 from this server is always its own daily limit or throttle; the model's rate limit arrives as a 502.
+  if (status === 409) return { title: text || "That isn't available right now.", hint: "" };
   if (status === 429) return { title: text || "Too many requests. Please try again later.", hint: "" };
   if (/\b429\b|RESOURCE_EXHAUSTED|quota|rate.?limit/i.test(text)) {
     return { title: "The language model is busy (rate limit). Please try again in a minute.", hint: "" };

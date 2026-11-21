@@ -28,7 +28,7 @@ web = ["ddgs>=9.0"]
 where = ["src"]
 
 [tool.setuptools.package-data]
-rag = ["web/*"]   # the web UI (HTML, CSS, JS) ships inside the package
+rag = ["web/*", "web/fonts/*"]   # the web UI (HTML, CSS, JS) ships inside the package
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

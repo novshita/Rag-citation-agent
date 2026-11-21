@@ -1,3 +1,5 @@
+<p align="center"><img src="src/rag/web/logo.svg" alt="RAG Citation Agent logo" width="120"></p>
+
 # RAG Citation Agent
 
 [![CI](https://github.com/novshita/rag-citation-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/novshita/rag-citation-agent/actions/workflows/ci.yml)
@@ -11,11 +13,19 @@ Ask questions about a set of documents and get answers that are **backed by quot
 
 ## Demo
 
-The landing page shows how it works as a live animation. Real pages from the indexed documents drift past a scanner, dissolve, and turn into the exact quote the system cites, with the count of cited words against the words on the page. The pages, quotes and counts come from the real documents, and a test checks every quote against its source file. It pauses on request and respects reduced-motion settings.
+Screenshots of the web UI running on the FastAPI documentation, with a real model answer. The site has three steps: a landing page, a login page (sign in, create an account, or continue as a guest), and the product.
+
+The landing page explains the idea and shows how it works as a live animation. Real pages from the indexed documents drift past a scanner, dissolve, and turn into the exact quote the system cites, with the count of cited words against the words on the page. The pages, quotes and counts come from the real documents, and a test checks every quote against its source file. It pauses on request and respects reduced-motion settings.
+
+![The landing page: headline, an example answer, the headline numbers, and how it works](docs/screenshots/demo-landing.png)
 
 ![The page-to-proof animation: a documentation page dissolves at a scanner line and becomes its verified quote](docs/screenshots/demo-belt.png)
 
-Real screenshots of the web UI running on the FastAPI documentation. Every answer shows its proof: the exact quote, highlighted inside the source passage it came from, with the relevance gate's decision and the retrieved passages underneath.
+The product starts with an empty ask page: a question box and three example questions (one it can answer, one that needs several pages, one it can't answer).
+
+![The empty ask page](docs/screenshots/demo-ask.png)
+
+Every answer shows its proof: the exact quote, highlighted inside the source passage it came from, with the relevance gate's decision and the retrieved passages underneath.
 
 ![An answered question: status, confidence, the claim, and the quote highlighted in its source passage](docs/screenshots/demo-answered.png)
 
@@ -23,14 +33,9 @@ When the documents don't cover a question, it says so. Here the relevance gate s
 
 ![An abstained question: the best match is below the relevance threshold, so no model call was made](docs/screenshots/demo-abstained.png)
 
-<details>
-<summary>Dark theme</summary>
+To run it yourself: `pip install -e ".[api]"`, then `uvicorn rag.api:create_default_app --factory --port 8000` and open http://localhost:8000 (see [Quick start](#quick-start)).
 
-![The answered state in the dark theme](docs/screenshots/demo-dark.png)
-
-</details>
-
-To run it yourself: `pip install -e ".[api]"`, then `uvicorn rag.api:create_default_app --factory --port 8000` and open http://localhost:8000 (see [Quick start](#quick-start)). The site has three steps: a landing page (with the animation above), a login page (sign in, create an account, or continue as a guest), and then the product.
+The interface uses [Inter](https://github.com/rsms/inter) and [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono), served from this repository (no CDN), under the SIL Open Font License; see [src/rag/web/fonts/LICENSES.txt](src/rag/web/fonts/LICENSES.txt).
 
 ## The problem
 

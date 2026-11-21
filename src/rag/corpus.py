@@ -55,6 +55,7 @@ def build_corpus_info(doc_ids: list[str], manifest: dict, *, top_k: int, min_sco
         "name": str(manifest.get("name") or "Indexed documents"),
         "note": str(manifest.get("note") or ""),
         "tagline": str(manifest.get("tagline") or ""),
+        "words": manifest["words"] if isinstance(manifest.get("words"), int) and manifest["words"] > 0 else None,
         "pages": len(set(doc_ids)),
         "groups": group_documents(doc_ids),
         "examples": examples,

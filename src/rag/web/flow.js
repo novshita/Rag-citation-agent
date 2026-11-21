@@ -3,10 +3,23 @@
 
 export const ROUTES = ["landing", "login", "app", "evaluation"];
 
-/** "#/app" -> "app"; anything unknown or empty is the landing page. */
+/** Sections of the landing page that "#/example" and friends scroll to. */
+export const ANCHORS = ["example", "principles", "evidence"];
+
+function firstSegment(hash) {
+  return String(hash || "").replace(/^#\/?/, "").split(/[/?]/)[0];
+}
+
+/** "#/app" -> "app"; a landing section ("#/example") is the landing page; anything unknown or empty too. */
 export function parseRoute(hash) {
-  const name = String(hash || "").replace(/^#\/?/, "").split(/[/?]/)[0];
+  const name = firstSegment(hash);
   return ROUTES.includes(name) ? name : "landing";
+}
+
+/** "#/example" -> "example": which landing section to scroll to, or null. */
+export function parseAnchor(hash) {
+  const name = firstSegment(hash);
+  return ANCHORS.includes(name) ? name : null;
 }
 
 /**
@@ -42,4 +55,9 @@ export function checkCredentials(mode, email, password) {
 export function whoLabel(me) {
   if (!me || !me.authenticated || !me.enabled) return "";
   return me.kind === "guest" ? "Guest" : me.email;
+}
+
+/** 49333 -> "49,000": the landing page says "about 49,000 words". */
+export function approxWords(n) {
+  return Number.isFinite(n) && n > 0 ? (Math.round(n / 1000) * 1000).toLocaleString("en-US") : "";
 }

@@ -185,7 +185,7 @@ def create_app(
     @app.get("/corpus")
     def corpus_info() -> dict:
         return corpus or {"name": "Indexed documents", "note": "", "tagline": "", "pages": 0, "groups": [],
-                          "examples": [], "top_k": 5, "min_score": min_score, "llm": ""}
+                          "examples": [], "top_k": 5, "min_score": min_score, "llm": "", "words": None}
 
     if auth is not None:
         @app.post("/auth/signup", status_code=201)

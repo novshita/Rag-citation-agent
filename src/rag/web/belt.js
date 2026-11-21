@@ -60,7 +60,6 @@ function buildProof(card) {
  */
 export function createBelt(cards) {
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
-  const dark = window.matchMedia("(prefers-color-scheme: dark)");
 
   const pageEls = cards.map((c) => el("div", "card-slot", buildPage(c)));
   const proofEls = cards.map((c) => el("div", "code-slot", buildProof(c)));
@@ -127,8 +126,7 @@ export function createBelt(cards) {
   }
 
   function theme() {
-    const forced = document.documentElement.dataset.theme;
-    const isDark = forced === "dark" || (forced !== "light" && dark.matches);
+    const isDark = !!belt.closest('[data-tone="dark"]');     // the landing page is light; a dark page sets data-tone="dark"
     return { ...(isDark ? PALETTE.dark : PALETTE.light), isDark };
   }
 

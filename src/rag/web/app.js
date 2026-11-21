@@ -7,7 +7,9 @@ import {
   barPercent, errorInfo, excerpt, formatMeta, gateLabel, gateReason, plural, splitHighlight, statusInfo, verifiedLabel,
 } from "./format.js";
 import { h, icon } from "./dom.js";
-import { guard, parseRoute, quotaText, whoLabel } from "./flow.js";
+import { approxWords, guard, parseAnchor, parseRoute, quotaText } from "./flow.js";
+import { renderHeader } from "./header.js";
+import { buildHero } from "./hero.js";
 import { buildLanding } from "./landing.js";
 import { buildLogin } from "./login.js";
 
@@ -26,6 +28,7 @@ const state = {
   me: { enabled: false, authenticated: true, kind: null, email: null, remaining: null, limit: null, user_limit: null, guest_limit: null },
 };
 let page = null;   // the page on screen, so its animation can be stopped when the visitor leaves
+let currentView = null;
 
 const ui = {}; // elements of the ask view, set when it is built
 
@@ -36,11 +39,11 @@ const PREVIEW_DOCS = 3;
 function renderSidebar() {
   const c = state.corpus;
   const side = document.getElementById("sidebar");
-  side.replaceChildren(
+  side.replaceChildren(h("div", { class: "side-inner" },
     h("section", { class: "side-section" },
       h("p", { class: "label" }, "Indexed documents"),
       h("p", { class: "corpus-name" }, c.name),
-      h("p", { class: "corpus-note" }, [plural(c.pages, "page"), c.note].filter(Boolean).join(" · ")),
+      h("p", { class: "corpus-note" }, [plural(c.pages, "page"), c.words ? `about ${approxWords(c.words)} words` : "", c.note].filter(Boolean).join(" · ")),
       ...c.groups.map(renderGroup),
     ),
     h("section", { class: "side-section" },
@@ -63,7 +66,7 @@ function renderSidebar() {
         ),
       ),
     ),
-  );
+  ));
 }
 
 function renderGroup(group) {
@@ -107,12 +110,7 @@ function buildAskView() {
 
   ui.quota = h("p", { class: "hint quota", "aria-live": "polite" });
   paintQuota();
-  ui.hero = h("section", { class: "hero" },
-    h("span", { class: "pill" }, c.tagline || "Grounded question answering"),
-    h("h1", { class: "hero-title" }, "Ask the documents. See the proof."),
-    h("p", { class: "hero-text" },
-      "Every answer is written only from passages in the indexed documents. Every quote is checked against its source by code, not by AI. If the documents don't say, it says so."),
-  );
+  ui.hero = buildHero(c);
 
   ui.input = h("input", { id: "question", name: "question", type: "text", autocomplete: "off", maxlength: "2000",
     placeholder: "e.g. Which package do I need for file uploads?", "aria-describedby": "ask-hint" });
@@ -139,7 +137,7 @@ function buildAskView() {
 
   ui.input.value = state.question;
   ui.result = h("div", { id: "result", "aria-live": "polite" });
-  main.replaceChildren(h("div", { class: "column" }, ui.hero, form, ui.examples, ui.result));
+  main.replaceChildren(ui.hero, h("div", { class: "column" }, form, ui.examples, ui.result));
   paintResult();
 }
 
@@ -189,7 +187,9 @@ async function ask(raw) {
 
 function paintResult() {
   if (!ui.result) return;
-  ui.hero.hidden = state.phase !== "idle";
+  const idle = state.phase === "idle";
+  ui.hero.hidden = !idle;
+  document.body.toggleAttribute("data-hero", idle);     // the empty page: ribbon at full size, no sidebar yet
   ui.button.disabled = state.phase === "loading";
   const node = { idle: null, loading: renderLoading, done: () => renderResult(state.result), error: renderError }[state.phase];
   ui.result.replaceChildren(...(node ? [node()] : []));
@@ -415,18 +415,14 @@ async function post(path, body) {
   return reply;
 }
 
-function renderAccount() {
-  const slot = document.getElementById("account");
-  const who = whoLabel(state.me);
-  if (!state.me.enabled) { slot.replaceChildren(); return; }
-  if (!who) {
-    slot.replaceChildren(h("a", { class: "signin", href: "#/login" }, "Sign in"));
-    return;
-  }
-  slot.replaceChildren(
-    h("a", { class: "signin", href: "#/app" }, "Demo"),
-    h("span", { class: "who", title: who }, who),
-    h("button", { class: "link-btn", type: "button", onclick: signOut }, "Sign out"));
+function paintHeader() {
+  renderHeader(document.getElementById("site-header"), {
+    view: currentView || "landing", me: state.me, onSignOut: signOut,
+    onMenu: () => {
+      const open = document.body.classList.toggle("nav-open");
+      document.getElementById("menu-btn")?.setAttribute("aria-expanded", String(open));
+    },
+  });
 }
 
 async function signOut() {
@@ -435,26 +431,33 @@ async function signOut() {
   state.result = null;
   state.question = "";
   await refreshMe();
-  renderAccount();
-  location.hash = "#/";
-  route();
+  if (location.hash === "#/" || location.hash === "") { currentView = null; route(); } else { location.hash = "#/"; }
+}
+
+function scrollToAnchor(name) {
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (!name) { window.scrollTo(0, 0); return; }
+  document.getElementById(name)?.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
 }
 
 /* ---------- routing and start ---------- */
 
 function route() {
   const wanted = parseRoute(location.hash);
+  const anchor = parseAnchor(location.hash);
   const redirect = guard(wanted, state.me);
   if (redirect) { location.replace(redirect); return; }   // the hashchange this causes draws the right page
+
+  if (wanted === "landing" && currentView === "landing") { scrollToAnchor(anchor); return; }   // same page, just a different section
 
   page?.destroy?.();
   page = null;
   ui.result = null;
+  currentView = wanted;
   document.body.dataset.view = wanted;
   document.body.classList.remove("nav-open");
-  document.getElementById("menu-btn").setAttribute("aria-expanded", "false");
-  document.getElementById("nav-eval").setAttribute("aria-current", wanted === "evaluation" ? "page" : "false");
-  renderAccount();
+  document.body.removeAttribute("data-hero");
+  paintHeader();
   const main = document.getElementById("main");
 
   if (wanted === "app") {
@@ -465,15 +468,15 @@ function route() {
   } else if (wanted === "login") {
     page = buildLogin({
       me: state.me, api: post,
-      onDone: (me) => { state.me = me; renderAccount(); location.hash = "#/app"; },
+      onDone: (me) => { state.me = me; location.hash = "#/app"; },
     });
     main.replaceChildren(page.element);
     page.focus();
   } else {
-    page = buildLanding({ corpus: state.corpus, showcase: state.showcase, me: state.me });
+    page = buildLanding({ corpus: state.corpus, showcase: state.showcase });
     main.replaceChildren(page.element);
   }
-  window.scrollTo(0, 0);
+  if (wanted === "landing") scrollToAnchor(anchor); else window.scrollTo(0, 0);
 }
 
 async function start() {
@@ -490,10 +493,6 @@ async function start() {
   ]);
   route();
   window.addEventListener("hashchange", route);
-  document.getElementById("menu-btn").addEventListener("click", () => {
-    const open = document.body.classList.toggle("nav-open");
-    document.getElementById("menu-btn").setAttribute("aria-expanded", String(open));
-  });
 }
 
 start();

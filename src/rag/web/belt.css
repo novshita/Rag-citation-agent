@@ -80,7 +80,6 @@
 .counter-pill { display: flex; height: 26px; border-radius: 99px; overflow: hidden; font: 500 12.5px var(--mono); box-shadow: 0 0 18px color-mix(in srgb, var(--accent) 40%, transparent); }
 .counter-num { display: flex; align-items: center; justify-content: flex-end; min-width: 4.4ch; padding: 0 11px 0 13px; background: var(--accent); color: #fff; font-variant-numeric: tabular-nums; }
 .counter-of { display: flex; align-items: center; padding: 0 12px 0 10px; background: var(--accent-soft); color: var(--accent-text); font-size: 11px; white-space: nowrap; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .counter-num { color: #0b0f17; } }
 
 @media (max-width: 560px) {
   .belt-title { font-size: 17px; }

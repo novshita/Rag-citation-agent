@@ -5,8 +5,9 @@
   GET  /          the web UI (static files in rag/web)
   POST /ask       a cited answer as JSON
   GET  /corpus    what is indexed: name, grouped file list, example questions, settings the UI shows
+  GET/POST/DELETE /documents    the visitor's own uploaded document (see rag/uploads.py)
   GET  /health    liveness check
-  POST /auth/signup, /auth/login, /auth/guest, /auth/logout    and   GET /auth/me     (see rag/auth.py)
+  POST /auth/signup, /auth/verify, /auth/resend, /auth/login, /auth/guest, /auth/logout    and   GET /auth/me     (see rag/auth.py)
 
 With accounts on (the default for create_default_app), /ask needs a signed-in or guest session and counts
 against a daily limit; AUTH_ENABLED=0 turns that off for local use. RAG_API_KEY lets API callers skip the
@@ -17,17 +18,33 @@ import os
 import secrets
 import time
 from pathlib import Path
+from typing import Literal
+from urllib.parse import unquote
 
 from fastapi import FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from rag.auth import AuthError, AuthService, Session
+from rag.auth import AuthError, AuthService, Pending, Session
+from rag.mailer import ConsoleMailer, mailer_from_env
 from rag.highlight import find_quote
 from rag.pipeline import PipelineResult
+from rag.uploads import MB, UploadError, UploadManager, check_upload, clean_filename, human_size, limit_text
 
 WEB_DIR = Path(__file__).parent / "web"
+
+
+class RevalidatingStaticFiles(StaticFiles):
+    """Static files that browsers re-check on every load (cheap: an unchanged file answers "304 Not Modified").
+
+    Without this a browser may keep using an old script or stylesheet for a while after an update, which can
+    leave a page half old and half new."""
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
 SESSION_COOKIE = "rag_session"
 
 
@@ -36,9 +53,18 @@ class Credentials(BaseModel):
     password: str = Field(max_length=1000)         # bounded so a huge body can't make hashing expensive; the real rule is in auth.py
 
 
+class ResendRequest(BaseModel):
+    email: str = Field(max_length=254)
+
+
+class VerifyRequest(BaseModel):
+    token: str = Field(max_length=2000)
+
+
 class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     top_k: int | None = Field(default=None, ge=1, le=20)
+    source: Literal["sample", "mine"] = "sample"     # the sample documents, or the visitor's own upload
 
 
 class CitationOut(BaseModel):
@@ -148,6 +174,8 @@ def create_app(
     serve_ui: bool = True,
     auth: AuthService | None = None,
     cookie_secure: bool = False,
+    uploads: UploadManager | None = None,
+    public_url: str = "",
 ) -> FastAPI:
     """`ask(question, top_k) -> PipelineResult` is passed in so tests can use a fake."""
     app = FastAPI(title="RAG Citation Agent", description="Answers only from the indexed documents, with verified quotes.")
@@ -167,13 +195,31 @@ def create_app(
     def describe(session: Session | None) -> dict:
         if auth is None:     # accounts are off: everyone is let in
             return {"enabled": False, "authenticated": True, "kind": None, "email": None, "remaining": None,
-                    "limit": None, "user_limit": None, "guest_limit": None}
+                    "limit": None, "user_limit": None, "guest_limit": None, "verification": False}
         if session is None:
             return {"enabled": True, "authenticated": False, "kind": None, "email": None, "remaining": None,
-                    "limit": None, "user_limit": auth.user_limit, "guest_limit": auth.guest_limit}
+                    "limit": None, "user_limit": auth.user_limit, "guest_limit": auth.guest_limit,
+                    "verification": auth.require_verification}
         return {"enabled": True, "authenticated": True, "kind": session.kind, "email": session.email,
                 "remaining": auth.remaining(session), "limit": auth.limit_for(session), "user_limit": auth.user_limit,
-                "guest_limit": auth.guest_limit}
+                "guest_limit": auth.guest_limit, "verification": auth.require_verification}
+
+    def link_base(request: Request) -> str:
+        """Where confirmation links point. PUBLIC_URL when set; the request's own address is only for local use,
+        because a Host header can be forged."""
+        return (public_url or str(request.base_url)).rstrip("/")
+
+    def owner(request: Request) -> str:
+        """Who owns an uploaded document: the signed-in or guest session, or one shared owner when accounts are off."""
+        if auth is None:
+            return "local"
+        session = session_of(request)
+        if session is None:
+            raise HTTPException(status_code=401, detail="Sign in to use your own document.")
+        return session.subject
+
+    def upload_problem(error: UploadError) -> HTTPException:
+        return HTTPException(status_code=error.status, detail=error.message, headers={"Cache-Control": "no-store"})
 
     def refuse(error: AuthError) -> HTTPException:
         return HTTPException(status_code=error.status, detail=error.message, headers={"Cache-Control": "no-store"})
@@ -184,16 +230,38 @@ def create_app(
 
     @app.get("/corpus")
     def corpus_info() -> dict:
-        return corpus or {"name": "Indexed documents", "note": "", "tagline": "", "pages": 0, "groups": [],
+        info = corpus or {"name": "Indexed documents", "note": "", "tagline": "", "pages": 0, "groups": [],
                           "examples": [], "top_k": 5, "min_score": min_score, "llm": "", "words": None}
+        return {**info, "uploads": uploads.limits() if uploads else None}
 
     if auth is not None:
         @app.post("/auth/signup", status_code=201)
         def signup(body: Credentials, request: Request, response: Response) -> dict:
             try:
-                return start_session(request, response, auth.signup(body.email, body.password, address(request)))
+                result = auth.signup(body.email, body.password, address(request), link_base(request))
             except AuthError as error:
                 raise refuse(error) from None
+            if isinstance(result, Pending):          # the account waits until its email address is confirmed
+                response.status_code = 202
+                response.headers["Cache-Control"] = "no-store"
+                return {"verify": True, "email": result.email}
+            return start_session(request, response, result)
+
+        @app.post("/auth/verify")
+        def verify_email(body: VerifyRequest, request: Request, response: Response) -> dict:
+            try:
+                return start_session(request, response, auth.verify(body.token))
+            except AuthError as error:
+                raise refuse(error) from None
+
+        @app.post("/auth/resend", status_code=202)
+        def resend_email(body: ResendRequest, request: Request, response: Response) -> dict:
+            response.headers["Cache-Control"] = "no-store"
+            try:
+                auth.resend(body.email, address(request), link_base(request))
+            except AuthError as error:
+                raise refuse(error) from None
+            return {"ok": True}         # the same answer whether or not that address has an account waiting
 
         @app.post("/auth/login")
         def login(body: Credentials, request: Request, response: Response) -> dict:
@@ -210,7 +278,10 @@ def create_app(
                 raise refuse(error) from None
 
         @app.post("/auth/logout")
-        def logout(response: Response) -> dict:
+        def logout(request: Request, response: Response) -> dict:
+            session = session_of(request)
+            if session is not None and uploads is not None:
+                uploads.delete(session.subject)          # signing out removes the visitor's uploaded document
             response.delete_cookie(SESSION_COOKIE, path="/")
             response.headers["Cache-Control"] = "no-store"
             return {"ok": True}
@@ -225,6 +296,15 @@ def create_app(
                      x_api_key: str | None = Header(default=None)) -> AskResponse:
         key_ok = bool(api_key and x_api_key and secrets.compare_digest(x_api_key, api_key))
         session = None
+        mine = None
+        if body.source == "mine":
+            if uploads is None:
+                raise HTTPException(status_code=400, detail="Uploading your own document isn't enabled on this server.")
+            mine = owner(request)
+            try:
+                uploads.check_ready(mine)               # before a question is counted against the daily limit
+            except UploadError as error:
+                raise upload_problem(error) from None
         if not key_ok:
             if auth is not None:
                 session = session_of(request)
@@ -239,7 +319,7 @@ def create_app(
 
         started = time.perf_counter()
         try:
-            result = ask(body.question.strip(), body.top_k)
+            result = uploads.ask(mine, body.question.strip(), body.top_k) if mine else ask(body.question.strip(), body.top_k)
         except Exception as error:   # model/provider failures (rate limits, bad key) are upstream problems
             if session is not None:
                 auth.refund(session, address(request))      # an outage shouldn't use up someone's day
@@ -259,12 +339,43 @@ def create_app(
             response.headers["X-Questions-Remaining"] = str(auth.remaining(session))
         return to_response(result, latency_ms, min_score)
 
+    if uploads is not None:
+        @app.get("/documents")
+        def document_status(request: Request, response: Response) -> dict:
+            response.headers["Cache-Control"] = "no-store"
+            return uploads.status(owner(request))
+
+        @app.post("/documents", status_code=202)
+        async def upload_document(request: Request, response: Response, x_filename: str = Header(default="")) -> dict:
+            response.headers["Cache-Control"] = "no-store"
+            subject = owner(request)
+            filename = clean_filename(unquote(x_filename))
+            try:
+                declared = int(request.headers.get("content-length") or 0)
+                if declared:
+                    check_upload(filename, declared, uploads.max_bytes, uploads.max_pages)   # refuse before reading the body
+                data = bytearray()
+                async for piece in request.stream():
+                    data += piece
+                    if len(data) > uploads.max_bytes:
+                        raise UploadError(413, f"This file is too large. {filename} is over {human_size(uploads.max_bytes)}. "
+                                               f"{limit_text(uploads.max_bytes, uploads.max_pages)}")
+                return uploads.start(subject, filename, bytes(data))
+            except UploadError as error:
+                raise upload_problem(error) from None
+
+        @app.delete("/documents")
+        def remove_document(request: Request, response: Response) -> dict:
+            response.headers["Cache-Control"] = "no-store"
+            uploads.delete(owner(request))
+            return {"state": "none", "limits": uploads.limits()}
+
     if serve_ui and WEB_DIR.is_dir():
         @app.get("/", include_in_schema=False)
         def index() -> FileResponse:
-            return FileResponse(WEB_DIR / "index.html")
+            return FileResponse(WEB_DIR / "index.html", headers={"Cache-Control": "no-cache"})
 
-        app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
+        app.mount("/static", RevalidatingStaticFiles(directory=WEB_DIR), name="static")
 
     return app
 
@@ -272,7 +383,7 @@ def create_app(
 def create_default_app() -> FastAPI:
     from rag.config import load_settings
     from rag.corpus import build_corpus_info, load_manifest, manifest_path
-    from rag.runtime import build_ask
+    from rag.runtime import build_runtime
     from rag.store import get_collection
 
     settings = load_settings()
@@ -282,10 +393,25 @@ def create_default_app() -> FastAPI:
         doc_ids, load_manifest(manifest_path(os.getenv("CORPUS_MANIFEST", ""), settings.collection)),
         top_k=settings.top_k, min_score=settings.min_score, llm_provider=settings.llm_provider,
     )
+    runtime = build_runtime(settings)
     return create_app(
-        build_ask(settings), api_key=os.getenv("RAG_API_KEY") or None, log_db=settings.log_db,
+        runtime.ask, api_key=os.getenv("RAG_API_KEY") or None, log_db=settings.log_db,
         min_score=settings.min_score, corpus=info, auth=default_auth(), cookie_secure=os.getenv("COOKIE_SECURE") == "1",
+        uploads=default_uploads(runtime, settings), public_url=os.getenv("PUBLIC_URL", ""),
     )
+
+
+def default_uploads(runtime, settings) -> UploadManager | None:
+    """Visitors' own documents, from the environment; UPLOADS_ENABLED=0 turns the feature off."""
+    if os.getenv("UPLOADS_ENABLED", "1") == "0":
+        return None
+    manager = UploadManager(
+        runtime.embedder, runtime.ask_in, chunk_size=settings.chunk_size, chunk_overlap=settings.chunk_overlap,
+        max_bytes=int(float(os.getenv("UPLOAD_MAX_MB", "5")) * MB), max_pages=int(os.getenv("UPLOAD_MAX_PAGES", "50")),
+        ttl_seconds=int(os.getenv("UPLOAD_TTL_MINUTES", "60")) * 60,
+    )
+    manager.start_sweeper()
+    return manager
 
 
 def default_auth() -> AuthService | None:
@@ -297,7 +423,13 @@ def default_auth() -> AuthService | None:
         print("SESSION_SECRET is not set (or is shorter than 16 characters): using a random one, "
               "so everyone is signed out whenever the server restarts.")
         secret = secrets.token_urlsafe(32)
+    verify = os.getenv("EMAIL_VERIFICATION", "1") != "0"
+    mailer = mailer_from_env(os.environ)
+    if verify and isinstance(mailer, ConsoleMailer):
+        print("SMTP_HOST is not set: confirmation links are printed here instead of emailed. Fine for trying it "
+              "locally; a site people sign up to needs SMTP (see .env.example).")
     return AuthService(
         os.getenv("AUTH_DB", "data/auth.sqlite"), secret,
         guest_limit=int(os.getenv("GUEST_DAILY_LIMIT", "5")), user_limit=int(os.getenv("USER_DAILY_LIMIT", "30")),
+        require_verification=verify, mailer=mailer,
     )

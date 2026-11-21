@@ -7,11 +7,14 @@ import {
   barPercent, errorInfo, excerpt, formatMeta, gateLabel, gateReason, plural, splitHighlight, statusInfo, verifiedLabel,
 } from "./format.js";
 import { h, icon } from "./dom.js";
-import { approxWords, guard, parseAnchor, parseRoute, quotaText } from "./flow.js";
+import {
+  ACCEPT, EXAMPLE_NOTES, checkFile, docPillText, formatBytes, guard, meterModel, parseAnchor, parseRoute, privacyText, sourceLabel, stageRows,
+} from "./flow.js";
 import { renderHeader } from "./header.js";
-import { buildHero } from "./hero.js";
+import { getDocument, removeDocument, sendDocument } from "./upload.js";
 import { buildLanding } from "./landing.js";
 import { buildLogin } from "./login.js";
+import { buildVerify } from "./verify.js";
 
 /* ---------- state ---------- */
 
@@ -23,7 +26,11 @@ const state = {
   result: null,
   error: null,
   controller: null,
-  expanded: new Set(),
+  expanded: new Set(),     // sample-doc groups that are open
+  showAll: new Set(),      // groups that show every file, not just the first few
+  source: "sample",         // what questions are answered from: "sample" or "mine" (the visitor's upload)
+  doc: { state: "none" },   // the visitor's uploaded document, as the server reports it
+  uploadError: null,
   showcase: [],   // example pages for the "page to proof" demo (static/showcase.json)
   me: { enabled: false, authenticated: true, kind: null, email: null, remaining: null, limit: null, user_limit: null, guest_limit: null },
 };
@@ -32,122 +39,339 @@ let currentView = null;
 
 const ui = {}; // elements of the ask view, set when it is built
 
-/* ---------- sidebar ---------- */
+/* ---------- the workspace: source, ask, how it works ---------- */
 
 const PREVIEW_DOCS = 3;
+let pollTimer = null;
 
-function renderSidebar() {
+const canAsk = () => state.source === "sample" || state.doc.state === "ready";
+const sourceName = () => sourceLabel(state.source, state.doc, state.corpus);
+const uploadLimits = () => state.corpus.uploads;      // null when this server has no uploads
+
+/** Replace one of the workspace's pieces with a freshly built one. */
+function swap(key, make) {
+  if (!ui[key]) return;
+  const next = make();
+  ui[key].replaceWith(next);
+  ui[key] = next;
+}
+
+function repaintSource() { swap("source", renderSourceCard); }
+
+function repaintAsk() {
+  const typed = ui.input ? ui.input.value : state.question;
+  swap("ask", renderAskCard);
+  ui.input.value = typed;
+  paintResult();
+}
+
+function afterDocumentChange() {
+  repaintSource();
+  repaintAsk();
+  paintHeader();
+  if (state.doc.state === "indexing") schedulePoll();
+}
+
+/* ---- source card ---- */
+
+function renderSourceCard() {
+  const limits = uploadLimits();
+  const tab = (name, text) => h("button", { type: "button", role: "tab", "aria-selected": String(state.source === name),
+    onclick: () => setSource(name) }, text);
+  return h("section", { class: "panel", id: "source" },
+    h("p", { class: "eyebrow" }, "Source"),
+    h("h2", { class: "panel-title" }, "What should I answer from?"),
+    limits ? h("div", { class: "seg", role: "tablist", "aria-label": "Choose what to answer from" }, tab("sample", "Sample docs"), tab("mine", "Your document")) : null,
+    state.source === "sample" ? renderSample() : renderMine(limits));
+}
+
+function renderSample() {
   const c = state.corpus;
-  const side = document.getElementById("sidebar");
-  side.replaceChildren(h("div", { class: "side-inner" },
-    h("section", { class: "side-section" },
-      h("p", { class: "label" }, "Indexed documents"),
-      h("p", { class: "corpus-name" }, c.name),
-      h("p", { class: "corpus-note" }, [plural(c.pages, "page"), c.words ? `about ${approxWords(c.words)} words` : "", c.note].filter(Boolean).join(" · ")),
-      ...c.groups.map(renderGroup),
-    ),
-    h("section", { class: "side-section" },
-      h("p", { class: "label" }, "How it works"),
-      h("ol", { class: "steps" },
-        step(1, "Retrieve", "code", "Find the most relevant passages."),
-        step(2, "Relevance gate", "code", 'If none is close enough, stop and say "I don\'t know".'),
-        step(3, "Answer with quotes", c.llm || "model", "The model writes the answer and must quote exact text for every claim.", true),
-        step(4, "Verify in code", "code", "Every quote is checked against its source. Fake quotes are removed."),
-      ),
-    ),
-    h("section", { class: "side-section" },
-      h("p", { class: "label" }, "Advanced"),
-      h("div", { class: "stepper" },
-        h("span", { id: "topk-label" }, "Passages to retrieve (top-k)"),
-        h("div", { class: "stepper-ctl", role: "group", "aria-labelledby": "topk-label" },
-          h("button", { type: "button", "aria-label": "Fewer passages", disabled: state.topK <= 1, onclick: () => setTopK(state.topK - 1) }, "−"),
-          h("output", { "aria-live": "polite" }, String(state.topK)),
-          h("button", { type: "button", "aria-label": "More passages", disabled: state.topK >= 20, onclick: () => setTopK(state.topK + 1) }, "+"),
-        ),
-      ),
-    ),
-  ));
+  const total = c.groups.reduce((n, g) => n + g.pages, 0) || 1;
+  return h("div", { class: "sample" },
+    h("h3", { class: "sample-name" }, c.name),
+    h("p", { class: "sample-note" }, [plural(c.pages, "page"), c.note, "ready now"].filter(Boolean).join(" · ")),
+    c.groups.map((g) => renderGroup(g, total)));
 }
 
-function renderGroup(group) {
+function renderGroup(group, total) {
   const open = state.expanded.has(group.name);
-  const docs = open ? group.docs : group.docs.slice(0, PREVIEW_DOCS);
+  const all = state.showAll.has(group.name);
+  const docs = open && !all ? group.docs.slice(0, PREVIEW_DOCS) : group.docs;
   const hidden = group.docs.length - docs.length;
+  const toggle = () => { open ? state.expanded.delete(group.name) : state.expanded.add(group.name); repaintSource(); };
   return h("div", { class: "group" },
-    h("div", { class: "group-head" }, icon("folder"), group.name, h("span", { class: "pill-count" }, plural(group.pages, "page"))),
-    h("ul", { class: "doclist" }, docs.map((d) => h("li", { title: d }, d))),
-    group.docs.length > PREVIEW_DOCS
-      ? h("button", { class: "more-btn", type: "button", "aria-expanded": String(open), onclick: () => toggleGroup(group.name) },
-          open ? "Show fewer" : `+ ${hidden} more ${hidden === 1 ? "page" : "pages"}`)
-      : null,
-  );
+    h("button", { class: "group-head", type: "button", "aria-expanded": String(open), onclick: toggle },
+      icon("folder", 18), h("span", { class: "gname" }, group.name), h("span", { class: "gcount" }, plural(group.pages, "page")),
+      h("span", { class: `chev-i${open ? " open" : ""}` }, icon("chevron", 16))),
+    h("div", { class: "gbar", "aria-hidden": "true" }, h("i", { style: `width:${Math.round(group.pages / total * 100)}%` })),
+    open ? h("ul", { class: "doclist" }, docs.map((d) => h("li", { title: d }, d))) : null,
+    open && hidden > 0
+      ? h("button", { class: "more-btn", type: "button", onclick: () => { state.showAll.add(group.name); repaintSource(); } },
+          `+ ${hidden} more ${hidden === 1 ? "page" : "pages"}`)
+      : null);
 }
 
-function step(n, title, tag, text, isModel = false) {
-  return h("li", { class: "step" },
-    h("span", { class: "step-num" }, String(n)),
-    h("div", {},
-      h("div", { class: "step-title" }, title, h("span", { class: `tag${isModel ? " model" : ""}` }, tag)),
-      h("p", { class: "step-desc" }, text)),
-  );
+function renderMine(limits) {
+  const doc = state.doc;
+  const problem = state.uploadError || (doc.state === "error" ? doc.error : null);
+  const note = h("div", { class: "privacy" }, icon("lock", 16),
+    h("p", {}, h("b", {}, "Private to this session. "), privacyText(limits)));
+  if (doc.state === "indexing") return h("div", { class: "mine" }, renderIndexing(doc), note);
+  if (doc.state === "ready" && !problem) return h("div", { class: "mine" }, renderReady(doc), note);
+  return h("div", { class: "mine" },
+    problem ? h("div", { class: "upload-error", role: "alert" }, icon("alertc", 18), h("p", {}, problem)) : null,
+    renderDropzone(problem ? "Try another file" : "Drop a file here", limits), note);
 }
 
-function toggleGroup(name) {
-  state.expanded.has(name) ? state.expanded.delete(name) : state.expanded.add(name);
-  renderSidebar();
+function renderDropzone(title, limits) {
+  const zone = h("div", { class: "dropzone", role: "button", tabindex: "0", "aria-label": `${title}, or browse your computer`,
+    onclick: pickFile,
+    onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pickFile(); } },
+    ondragover: (e) => { e.preventDefault(); zone.classList.add("over"); },
+    ondragleave: () => zone.classList.remove("over"),
+    ondrop: (e) => {
+      e.preventDefault();
+      zone.classList.remove("over");
+      const files = [...e.dataTransfer.files];
+      if (files.length > 1) { state.uploadError = "Upload one file at a time."; repaintSource(); }
+      else if (files[0]) handleFile(files[0]);
+    } },
+    h("span", { class: "dz-ico" }, icon("upload", 22)),
+    h("p", { class: "dz-title" }, title),
+    h("p", { class: "dz-sub" }, "or ", h("button", { type: "button", class: "dz-browse", onclick: (e) => { e.stopPropagation(); pickFile(); } }, "browse your computer")),
+    h("div", { class: "dz-types" }, ["PDF", "Markdown", "Text"].map((t) => h("span", {}, t))),
+    h("p", { class: "dz-limits" }, `Up to ${limits.max_mb} MB · ${limits.max_pages} pages · one file at a time`));
+  return zone;
 }
 
-function setTopK(value) {
-  state.topK = Math.min(20, Math.max(1, value));
-  renderSidebar();
+const extOf = (name) => (name.includes(".") ? name.split(".").pop().toUpperCase().slice(0, 4) : "FILE");
+
+function fileCard(doc, extra) {
+  const size = [formatBytes(doc.size_bytes), doc.pages ? plural(doc.pages, "page") : ""].filter(Boolean).join(" · ");
+  return h("div", { class: `filecard${extra ? ` ${extra}` : ""}` },
+    h("span", { class: "ftype" }, extOf(doc.filename)),
+    h("div", {}, h("p", { class: "fname", title: doc.filename }, doc.filename),
+      extra === "ready" ? h("p", { class: "fready" }, icon("tick", 14), "Ready to ask") : h("p", { class: "fsize" }, size)));
+}
+
+function renderIndexing(doc) {
+  return h("div", { class: "indexing" },
+    fileCard(doc),
+    h("div", { class: "prog-head" }, h("b", {}, "Indexing your document"), h("span", {}, `${doc.percent || 0}%`)),
+    h("div", { class: "progress", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": String(doc.percent || 0) },
+      h("i", { style: `width:${doc.percent || 0}%` })),
+    h("ul", { class: "stages-list" }, stageRows(doc).map((row) =>
+      h("li", { class: row.state },
+        row.state === "done" ? h("span", { class: "sdone" }, icon("tick", 14)) : row.state === "active" ? h("span", { class: "spin small" }) : h("span", { class: "sdot" }),
+        h("div", {}, h("span", { class: "slabel" }, row.label), row.detail ? h("small", {}, row.detail) : null)))),
+    h("button", { class: "btn-secondary", type: "button", onclick: removeIt }, "Cancel"));
+}
+
+function renderReady(doc) {
+  return h("div", { class: "ready" },
+    fileCard(doc, "ready"),
+    h("div", { class: "chips" },
+      h("span", {}, plural(doc.pages, "page")), h("span", {}, plural(doc.passages_total, "passage")), h("span", {}, `Indexed in ${doc.seconds} s`)),
+    h("div", { class: "file-actions" },
+      h("button", { class: "btn-secondary", type: "button", onclick: pickFile }, "Replace file"),
+      h("button", { class: "danger-link", type: "button", onclick: removeIt }, "Remove and delete")));
+}
+
+/* ---- upload actions ---- */
+
+function pickFile() {
+  ui.fileInput.value = "";
+  ui.fileInput.click();
+}
+
+async function handleFile(file) {
+  state.uploadError = null;
+  const problem = checkFile(file, uploadLimits());
+  if (problem) { state.uploadError = problem; state.doc = { state: "none" }; afterDocumentChange(); return; }
+  state.doc = { state: "indexing", stage: "reading", filename: file.name, size_bytes: file.size, percent: 0, pages: 0, passages_done: 0, passages_total: 0 };
+  afterDocumentChange();
+  try {
+    state.doc = await sendDocument(file);
+  } catch (error) {
+    state.doc = { state: "none" };
+    state.uploadError = error.message;
+  }
+  afterDocumentChange();
+}
+
+function schedulePoll() {
+  clearTimeout(pollTimer);
+  pollTimer = setTimeout(async () => {
+    if (state.doc.state !== "indexing" || !ui.source) return;
+    try {
+      state.doc = await getDocument();
+    } catch (error) {
+      state.doc = { state: "none" };
+      state.uploadError = error.message;
+    }
+    afterDocumentChange();
+  }, 600);
+}
+
+async function removeIt() {
+  clearTimeout(pollTimer);
+  state.uploadError = null;
+  try { await removeDocument(); } catch { /* it is gone, or it will expire */ }
+  state.doc = { state: "none" };
+  afterDocumentChange();
+}
+
+async function refreshDocument() {
+  try {
+    state.doc = await getDocument();
+  } catch {
+    state.doc = { state: "none" };
+  }
+  afterDocumentChange();
+}
+
+function setSource(next) {
+  if (state.source === next) return;
+  state.controller?.abort();
+  state.source = next;
+  state.phase = "idle";
+  state.result = null;
+  state.question = "";
+  state.uploadError = null;
+  buildAskView();
+  paintHeader();
+  if (next === "mine") refreshDocument();
+}
+
+/* ---- retrieval setting ---- */
+
+function renderRetrievalCard() {
+  const set = (value) => { state.topK = Math.min(20, Math.max(1, value)); swap("retrieval", renderRetrievalCard); };
+  return h("section", { class: "panel" },
+    h("p", { class: "eyebrow" }, "Retrieval setting"),
+    h("div", { class: "retr" },
+      h("div", {}, h("div", { class: "retr-title", id: "topk-label" }, "Passages to retrieve"),
+        h("p", { class: "retr-sub" }, "top-k · more passages, slower answers")),
+      h("div", { class: "stepper-ctl", role: "group", "aria-labelledby": "topk-label" },
+        h("button", { type: "button", "aria-label": "Fewer passages", disabled: state.topK <= 1, onclick: () => set(state.topK - 1) }, "−"),
+        h("output", { "aria-live": "polite" }, String(state.topK)),
+        h("button", { type: "button", "aria-label": "More passages", disabled: state.topK >= 20, onclick: () => set(state.topK + 1) }, "+"))));
+}
+
+/* ---- ask card ---- */
+
+function renderMeter() {
+  const m = meterModel(state.me);
+  if (!m) return h("span", { class: "meter-none" });
+  const bars = m.segmented
+    ? h("span", { class: "dashes", "aria-hidden": "true" }, Array.from({ length: m.limit }, (_, i) => h("i", { class: i < m.remaining ? "on" : "" })))
+    : h("span", { class: "meterbar", "aria-hidden": "true" }, h("i", { style: `width:${Math.round(m.remaining / m.limit * 100)}%` }));
+  return h("span", { class: "meter" }, bars, h("span", { class: "meter-text", "aria-live": "polite" }, h("b", {}, `${m.remaining} of ${m.limit}`), " questions left today"));
+}
+
+function renderAskCard() {
+  const limits = uploadLimits();
+  const sample = state.source === "sample";
+  const name = sourceName();
+  ui.meter = renderMeter();
+  ui.input = h("input", { id: "question", name: "question", type: "text", autocomplete: "off", maxlength: "2000", disabled: !canAsk(),
+    placeholder: canAsk() ? (sample ? "e.g. Which package do I need for file uploads?" : "e.g. What does this document say about…") : "Upload a document to start asking",
+    "aria-describedby": "ask-hint" });
+  ui.button = h("button", { class: "btn-primary", type: "submit", disabled: !canAsk() || state.phase === "loading" }, "Ask", icon("arrow", 18));
+  const guest = state.me.kind === "guest" && state.me.user_limit;
+  const hint = sample
+    ? `Press Enter to ask. Answers come only from the indexed ${name.replace(/ documentation$/, "")} pages.${guest ? ` A free account gets ${state.me.user_limit} questions a day.` : ""}`
+    : canAsk() ? "Press Enter to ask. Answers come only from your document." : "Upload a PDF, Markdown or text file on the left, then ask about it.";
+  return h("section", { class: "panel ask-panel" },
+    h("div", { class: "ask-top" },
+      h("span", { class: "asking" }, icon("file", 16), h("span", { class: "asking-k" }, "Asking:"), h("b", {}, name),
+        limits ? h("button", { class: "change", type: "button", onclick: () => { setSource(sample ? "mine" : "sample"); document.getElementById("source")?.scrollIntoView({ block: "nearest", behavior: "smooth" }); } }, "Change") : null),
+      ui.meter),
+    h("h1", { class: "ws-h1" }, "Ask your documents. ", h("span", {}, "See the proof.")),
+    h("form", { class: "ask", onsubmit: (e) => { e.preventDefault(); ask(ui.input.value); } },
+      h("label", { for: "question" }, `Ask a question about ${sample ? `the ${name.replace(/ documentation$/, " docs")}` : name}`),
+      h("div", { class: "ask-row" }, h("div", { class: "input-wrap" }, icon("search", 18), ui.input), ui.button),
+      h("p", { class: "hint", id: "ask-hint" }, hint)));
+}
+
+function paintQuota() { swap("meter", renderMeter); }
+
+/* ---- examples, legend and the right column ---- */
+
+function renderExamples() {
+  const examples = state.corpus.examples;
+  if (!examples.length) return h("span", { hidden: true });
+  return h("section", { class: "examples-ws" },
+    h("div", { class: "ex-head" }, h("h2", {}, "Not sure what to ask? Start here."), h("span", {}, "Click one to fill the box")),
+    h("div", { class: "ex-grid" }, examples.map((e) =>
+      h("button", { class: `ex-card ${e.kind}`, type: "button", onclick: () => { ui.input.value = e.question; ui.input.focus(); } },
+        h("span", { class: `kind ${e.kind}` }, e.kind === "abstain" ? "Can't answer" : e.tag),
+        h("span", { class: "ex-q" }, e.question),
+        h("span", { class: "ex-note" }, icon("arrow", 14), EXAMPLE_NOTES[e.kind] || "")))));
+}
+
+function renderLegend() {
+  const item = (cls, name, text, wide) => h("div", { class: `lg ${cls}${wide ? " wide" : ""}` }, h("span", { class: `lg-pill ${cls}` }, name), h("p", {}, text));
+  return h("section", { class: "panel legend" },
+    h("h2", { class: "panel-title" }, "Every question ends in one of three results"),
+    h("p", { class: "lg-sub" }, "Each is labelled at the top of the answer"),
+    h("div", { class: "lg-grid" },
+      item("ok", "Answered", "The document covers it. You get the answer and a verified quote for every claim."),
+      item("warn", "Partial answer", "Only part is covered. You see what is proven and what the document doesn't say."),
+      item("muted", "Abstained", "Nothing relevant enough. It says so instead of guessing, and no model is called.", true)));
+}
+
+function renderSteps() {
+  const step = (n, title, tag, text, model) => h("li", {},
+    h("span", { class: "sn" }, String(n)),
+    h("div", {}, h("div", { class: "st-title" }, title, h("span", { class: `tag${model ? " model" : ""}` }, tag)), h("p", {}, text)));
+  const llm = state.corpus.llm || "model";
+  return h("section", { class: "panel" },
+    h("p", { class: "eyebrow" }, "How an answer is made"),
+    h("h2", { class: "panel-title" }, "Four steps, checked in code"),
+    h("ol", { class: "steps-ws" },
+      step(1, "Retrieve", "code", "Find the most relevant passages."),
+      step(2, "Relevance gate", "code", "If none is close enough, stop and say “I don't know”."),
+      step(3, "Answer with quotes", llm, "The model writes the answer and must quote exact text for every claim.", true),
+      step(4, "Verify in code", "code", "Every quote is checked against its source. Fake quotes are removed.")));
+}
+
+function renderMeasured() {
+  return h("section", { class: "measured" },
+    h("p", { class: "eyebrow" }, "Measured, not claimed"),
+    h("div", { class: "big" }, "136 / 137"),
+    h("p", { class: "m-text" }, "citations verified against their source passages, in the evaluation on the sample docs."),
+    h("div", { class: "m-rule" }),
+    h("div", { class: "big" }, "25%", h("small", {}, "vs 100%")),
+    h("p", { class: "m-text" }, "answered on questions the sample docs can't answer, against a plain chatbot."),
+    h("a", { class: "m-btn", href: "#/evaluation" }, "How it was evaluated", icon("arrow", 16)));
 }
 
 /* ---------- ask view ---------- */
 
 function buildAskView() {
   const main = document.getElementById("main");
-  const c = state.corpus;
-
-  ui.quota = h("p", { class: "hint quota", "aria-live": "polite" });
-  paintQuota();
-  ui.hero = buildHero(c);
-
-  ui.input = h("input", { id: "question", name: "question", type: "text", autocomplete: "off", maxlength: "2000",
-    placeholder: "e.g. Which package do I need for file uploads?", "aria-describedby": "ask-hint" });
-  ui.button = h("button", { class: "btn-primary", type: "submit" }, "Ask");
-  const form = h("form", { class: "ask", onsubmit: (e) => { e.preventDefault(); ask(ui.input.value); } },
-    h("label", { for: "question" }, "Ask a question about the documents"),
-    h("div", { class: "ask-row" },
-      h("div", { class: "input-wrap" }, icon("search", 18), ui.input),
-      ui.button),
-    h("p", { class: "hint", id: "ask-hint" }, "Press Enter to ask. Answers come only from the indexed documents."),
-    ui.quota,
-  );
-
-  ui.examples = c.examples.length
-    ? h("section", { class: "examples" },
-        h("p", { class: "label" }, "Try an example"),
-        h("div", { class: "example-list" }, c.examples.map((e) =>
-          h("button", { class: `example ${e.kind}`, type: "button", onclick: () => ask(e.question) },
-            icon("arrow"),
-            h("span", { class: "badge-row" }, h("span", { class: `kind ${e.kind}` }, e.tag)),
-            h("span", { class: "q" }, e.question)))),
-      )
-    : null;
-
-  ui.input.value = state.question;
+  ui.fileInput = h("input", { type: "file", accept: ACCEPT, hidden: true, "aria-hidden": "true", tabindex: "-1",
+    onchange: (e) => { const file = e.target.files[0]; if (file) handleFile(file); } });
+  ui.source = renderSourceCard();
+  ui.retrieval = renderRetrievalCard();
+  ui.ask = renderAskCard();
+  ui.examples = renderExamples();
+  ui.legend = renderLegend();
   ui.result = h("div", { id: "result", "aria-live": "polite" });
-  main.replaceChildren(ui.hero, h("div", { class: "column" }, form, ui.examples, ui.result));
+  main.replaceChildren(h("div", { class: "ws" },
+    h("div", { class: "ws-left" }, ui.source, ui.retrieval),
+    h("div", { class: "ws-main" }, ui.ask, ui.result, ui.examples, ui.legend),
+    h("div", { class: "ws-right" }, renderSteps(), renderMeasured()),
+    ui.fileInput));
   paintResult();
-}
-
-function paintQuota() {
-  if (ui.quota) ui.quota.textContent = quotaText(state.me);
 }
 
 async function ask(raw) {
   const question = (raw || "").trim();
   if (!question) { ui.input.focus(); return; }
+  if (!canAsk()) return;
   state.question = question;
   ui.input.value = question;
   state.controller?.abort();
@@ -158,7 +382,7 @@ async function ask(raw) {
     const response = await fetch("/ask", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question, top_k: state.topK }),
+      body: JSON.stringify({ question, top_k: state.topK, source: state.source }),
       signal: state.controller.signal,
     });
     if (!response.ok) {
@@ -188,9 +412,9 @@ async function ask(raw) {
 function paintResult() {
   if (!ui.result) return;
   const idle = state.phase === "idle";
-  ui.hero.hidden = !idle;
-  document.body.toggleAttribute("data-hero", idle);     // the empty page: ribbon at full size, no sidebar yet
-  ui.button.disabled = state.phase === "loading";
+  ui.examples.hidden = !idle || state.source !== "sample";
+  ui.legend.hidden = !idle;
+  ui.button.disabled = state.phase === "loading" || !canAsk();
   const node = { idle: null, loading: renderLoading, done: () => renderResult(state.result), error: renderError }[state.phase];
   ui.result.replaceChildren(...(node ? [node()] : []));
 }
@@ -359,7 +583,7 @@ function buildEvaluationView() {
   const arrow = () => h("span", { class: "arrow", "aria-hidden": "true" }, "→");
 
   document.getElementById("main").replaceChildren(h("article", { class: "column prose" },
-    h("a", { class: "back", href: "#/" }, "← Back to the demo"),
+    h("a", { class: "back", href: state.me.authenticated ? "#/app" : "#/" }, "← Back"),
     h("h1", {}, "How it was evaluated"),
     h("p", {}, "30 held-out questions about the FastAPI documentation: 22 the documents can answer (one page, several pages, and three false-premise questions) and 8 they can't. The whole evaluation was run 3 times and compared against a plain chatbot and a basic RAG setup (retrieval and answering, but no relevance gate and no quote check). A separate set of 8 questions was used to tune the relevance threshold, so it was never tuned on the questions it is scored on."),
     h("h2", {}, "Results"),
@@ -410,7 +634,8 @@ async function post(path, body) {
   }
   const reply = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(typeof reply.detail === "string" ? reply.detail : "Something went wrong. Please check the fields and try again.");
+    throw Object.assign(new Error(typeof reply.detail === "string" ? reply.detail : "Something went wrong. Please check the fields and try again."),
+      { status: response.status });
   }
   return reply;
 }
@@ -418,18 +643,19 @@ async function post(path, body) {
 function paintHeader() {
   renderHeader(document.getElementById("site-header"), {
     view: currentView || "landing", me: state.me, onSignOut: signOut,
-    onMenu: () => {
-      const open = document.body.classList.toggle("nav-open");
-      document.getElementById("menu-btn")?.setAttribute("aria-expanded", String(open));
-    },
+    docPill: docPillText(state.source, state.doc, state.corpus),
   });
 }
 
 async function signOut() {
   try { await fetch("/auth/logout", { method: "POST" }); } catch { /* the cookie expires on its own */ }
+  clearTimeout(pollTimer);
   state.phase = "idle";
   state.result = null;
   state.question = "";
+  state.source = "sample";
+  state.doc = { state: "none" };
+  state.uploadError = null;
   await refreshMe();
   if (location.hash === "#/" || location.hash === "") { currentView = null; route(); } else { location.hash = "#/"; }
 }
@@ -455,16 +681,19 @@ function route() {
   ui.result = null;
   currentView = wanted;
   document.body.dataset.view = wanted;
-  document.body.classList.remove("nav-open");
-  document.body.removeAttribute("data-hero");
+  clearTimeout(pollTimer);
   paintHeader();
   const main = document.getElementById("main");
 
   if (wanted === "app") {
-    renderSidebar();
+    if (!state.expanded.size && state.corpus.groups.length && window.innerWidth > 960) state.expanded.add(state.corpus.groups[0].name);
     buildAskView();
+    if (state.source === "mine") refreshDocument();
   } else if (wanted === "evaluation") {
     buildEvaluationView();
+  } else if (wanted === "verify") {
+    page = buildVerify({ api: post, onDone: (me) => { state.me = me; location.hash = "#/app"; } });
+    main.replaceChildren(page.element);
   } else if (wanted === "login") {
     page = buildLogin({
       me: state.me, api: post,

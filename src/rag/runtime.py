@@ -1,11 +1,21 @@
 """Builds the real retrieve -> answer pipeline from settings. Shared by the web UI and the API."""
 
+from dataclasses import dataclass
+
 from rag.config import Settings
 from rag.pipeline import PipelineResult
 
 
-def build_ask(settings: Settings):
-    """Load the models and open the index once; return ask(question, top_k=None) -> PipelineResult."""
+@dataclass
+class Runtime:
+    ask: object        # ask(question, top_k=None) -> PipelineResult, over the sample documents
+    ask_in: object     # ask_in(question, top_k, collection) -> PipelineResult, over any one collection
+    embedder: object
+    settings: Settings
+
+
+def build_runtime(settings: Settings) -> Runtime:
+    """Load the models and open the index once."""
     from rag.embeddings import SentenceTransformerEmbedder
     from rag.llm import make_llm
     from rag.pipeline import answer_question
@@ -30,4 +40,18 @@ def build_ask(settings: Settings):
         return answer_question(question, chunks, llm, settings.min_score, settings.max_retries,
                                web_search=web_search, web_results=settings.web_results)
 
-    return ask
+    def ask_in(question: str, top_k: int | None, other) -> PipelineResult:
+        # A visitor's own document: no keyword index (small and temporary) and never the web fallback,
+        # so a question about a private file is never sent to a search service.
+        chunks = retrieve(
+            question, collection=other, embedder=embedder, top_k=top_k or settings.top_k,
+            reranker=reranker, candidates=settings.rerank_candidates, hybrid=False,
+        )
+        return answer_question(question, chunks, llm, settings.min_score, settings.max_retries)
+
+    return Runtime(ask, ask_in, embedder, settings)
+
+
+def build_ask(settings: Settings):
+    """ask(question, top_k=None) -> PipelineResult over the sample documents (used by the CLI and Streamlit)."""
+    return build_runtime(settings).ask

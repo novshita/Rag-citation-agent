@@ -13,7 +13,7 @@ Ask questions about a set of documents and get answers that are **backed by quot
 
 ## Demo
 
-Screenshots of the web UI running on the FastAPI documentation, with a real model answer. The site has three steps: a landing page, a login page (sign in, create an account, or continue as a guest), and the product.
+Screenshots of the web UI running on the FastAPI documentation, with real model answers. The site has three steps: a landing page, a login page (sign in, create an account, or continue as a guest), and the workspace.
 
 The landing page explains the idea and shows how it works as a live animation. Real pages from the indexed documents drift past a scanner, dissolve, and turn into the exact quote the system cites, with the count of cited words against the words on the page. The pages, quotes and counts come from the real documents, and a test checks every quote against its source file. It pauses on request and respects reduced-motion settings.
 
@@ -21,9 +21,9 @@ The landing page explains the idea and shows how it works as a live animation. R
 
 ![The page-to-proof animation: a documentation page dissolves at a scanner line and becomes its verified quote](docs/screenshots/demo-belt.png)
 
-The product starts with an empty ask page: a question box and three example questions (one it can answer, one that needs several pages, one it can't answer).
+**The workspace** has three columns: what to answer from (the sample docs or your own file) and the retrieval setting on the left, the question box with example questions in the middle, and how an answer is made on the right.
 
-![The empty ask page](docs/screenshots/demo-ask.png)
+![The workspace: source, question box, example questions and how an answer is made](docs/screenshots/demo-workspace.png)
 
 Every answer shows its proof: the exact quote, highlighted inside the source passage it came from, with the relevance gate's decision and the retrieved passages underneath.
 
@@ -32,6 +32,12 @@ Every answer shows its proof: the exact quote, highlighted inside the source pas
 When the documents don't cover a question, it says so. Here the relevance gate stopped it before any model was called:
 
 ![An abstained question: the best match is below the relevance threshold, so no model call was made](docs/screenshots/demo-abstained.png)
+
+**Bring your own document.** Switch to "Your document", drop in a PDF, Markdown or text file (up to 5 MB and 50 pages), and ask about it. It goes through the same pipeline: retrieve, relevance gate, quoted answer, verify in code.
+
+![Choosing your own document: the upload area and the privacy note](docs/screenshots/demo-upload.png)
+
+![A question answered from an uploaded file, with the quote highlighted in the uploaded text](docs/screenshots/demo-own-document.png)
 
 To run it yourself: `pip install -e ".[api]"`, then `uvicorn rag.api:create_default_app --factory --port 8000` and open http://localhost:8000 (see [Quick start](#quick-start)).
 
@@ -175,7 +181,7 @@ docker build -t rag-agent .
 docker run --rm -p 8000:8000 --env-file .env -v "$PWD/data:/app/data" rag-agent
 ```
 
-`GET /` is the web UI (plain HTML, CSS and JavaScript in [src/rag/web](src/rag/web), no build step; it follows the system light or dark theme and works on a phone). `POST /ask` returns the status, answer, confidence, claims with their verified quotes (each with its source passage and where the quote sits in it), the retrieved passages, the relevance gate's decision and threshold, whether a model was called, latency and tokens. `GET /corpus` describes what is indexed (the UI's sidebar and example questions come from it). `GET /health` is a liveness check. Accounts and daily limits protect the LLM quota: `/ask` needs a signed-in or guest session (`POST /auth/signup`, `/auth/login`, `/auth/guest`, `/auth/logout`, `GET /auth/me`; see [src/rag/auth.py](src/rag/auth.py)). Passwords are hashed with scrypt, sessions are signed HttpOnly cookies, failed sign-ins are throttled, and each person has a daily question limit (guests 5, accounts 30; a failed question is refunded). Set `SESSION_SECRET` to a long random value so sessions survive restarts, and `COOKIE_SECURE=1` when serving over HTTPS; behind a proxy run uvicorn with `--proxy-headers`. There is no email verification or password reset, on purpose. For local use without accounts, set `AUTH_ENABLED=0`. Scripts can skip the session by sending `X-API-Key` when `RAG_API_KEY` is set. The image is about 2.8 GB (PyTorch and the ML libraries); the embedding model is baked in so the first request doesn't download it.
+`GET /` is the web UI (plain HTML, CSS and JavaScript in [src/rag/web](src/rag/web), no build step; it follows the system light or dark theme and works on a phone). `POST /ask` returns the status, answer, confidence, claims with their verified quotes (each with its source passage and where the quote sits in it), the retrieved passages, the relevance gate's decision and threshold, whether a model was called, latency and tokens. `GET/POST/DELETE /documents` manage the visitor's own uploaded file: `POST` takes the file's bytes as the body with its name in an `X-Filename` header, indexes it in the background and reports progress through `GET`, and `POST /ask` takes `"source": "mine"` to ask it instead of the sample docs. `GET /corpus` describes what is indexed (the UI's sidebar and example questions come from it). `GET /health` is a liveness check. Accounts and daily limits protect the LLM quota: `/ask` needs a signed-in or guest session (`POST /auth/signup`, `/auth/login`, `/auth/guest`, `/auth/logout`, `GET /auth/me`; see [src/rag/auth.py](src/rag/auth.py)). Passwords are hashed with scrypt, sessions are signed HttpOnly cookies, failed sign-ins are throttled, and each person has a daily question limit (guests 5, accounts 30; a failed question is refunded). Set `SESSION_SECRET` to a long random value so sessions survive restarts, and `COOKIE_SECURE=1` when serving over HTTPS; behind a proxy run uvicorn with `--proxy-headers`. New accounts must confirm their email address: signing up creates a pending account and emails a one-time link (valid 24 hours; asking again or signing up again retires the old link), so a mistyped or invented address never becomes an account. Sending needs an SMTP account (`SMTP_*` and `PUBLIC_URL` in `.env.example`); without one the link is printed in the server's terminal, which is only for trying it locally. Guests have no email at all. There is no password reset or sign-in with Google, on purpose. For local use without accounts, set `AUTH_ENABLED=0`. Scripts can skip the session by sending `X-API-Key` when `RAG_API_KEY` is set. The image is about 2.8 GB (PyTorch and the ML libraries); the embedding model is baked in so the first request doesn't download it.
 
 A minimal alternative UI built with Streamlit:
 
@@ -183,6 +189,8 @@ A minimal alternative UI built with Streamlit:
 pip install -e ".[ui]"
 streamlit run src/rag/ui.py
 ```
+
+**Your own document in the web app.** Uploads are private and temporary: each visitor's file gets its own in-memory index, which only that session can ask. It is deleted when the visitor removes or replaces the file, signs out, or leaves it idle for an hour, and it disappears if the server restarts. It is never added to the sample documents, and a question about it is never sent to the optional web search. Limits: one file at a time, 5 MB, 50 pages (a text or Markdown file counts about 500 words as a page), and a few uploads per hour; questions about it count against the same daily limit as the sample docs. Scanned PDFs without a text layer are refused with a clear message. The indexes live in the server's memory, so run a single server process. Settings: `UPLOADS_ENABLED`, `UPLOAD_MAX_MB`, `UPLOAD_MAX_PAGES`, `UPLOAD_TTL_MINUTES` (see `.env.example`). The relevance threshold (`MIN_SCORE`) was tuned on the FastAPI docs, so for other documents it may stop slightly too many or too few questions.
 
 **Use your own documents.** Put PDF (with real text, not scans) or Markdown files in any folder, give them their own index, and ask. `CHROMA_COLLECTION=mine` selects a separate index, so the FastAPI one is untouched:
 

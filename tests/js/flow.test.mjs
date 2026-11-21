@@ -71,3 +71,62 @@ test("word counts are rounded to the nearest thousand", () => {
   assert.equal(approxWords(0), "");
   assert.equal(approxWords(null), "");
 });
+
+import { ACCEPT, checkFile, docPillText, formatBytes, meterModel, privacyText, sourceLabel, stageRows, ttlText } from "../../src/rag/web/flow.js";
+
+const limits = { max_mb: 5, max_pages: 50, ttl_minutes: 60 };
+
+test("file sizes read naturally", () => {
+  assert.equal(formatBytes(2_400_000), "2.3 MB");
+  assert.equal(formatBytes(12.4 * 1048576), "12.4 MB");
+  assert.equal(formatBytes(900), "1 KB");
+});
+
+test("a bad file is turned away with the design's wording", () => {
+  assert.equal(checkFile({ name: "annual-report.pdf", size: 12.4 * 1048576 }, limits), "This file is too large. annual-report.pdf is 12.4 MB. The limit is 5 MB or 50 pages.");
+  assert.match(checkFile({ name: "a.exe", size: 10 }, limits), /isn't supported/);
+  assert.match(checkFile({ name: "a.pdf", size: 0 }, limits), /is empty/);
+  assert.equal(checkFile({ name: "Notes.MD", size: 1000 }, limits), null);
+  assert.ok(ACCEPT.includes(".pdf") && ACCEPT.includes(".txt"));
+});
+
+test("the privacy note says what the server really does", () => {
+  assert.equal(ttlText(60), "an hour");
+  assert.equal(ttlText(120), "2 hours");
+  assert.equal(ttlText(30), "30 minutes");
+  assert.match(privacyText(limits), /remove it, sign out, or after an hour of no activity/);
+});
+
+test("progress rows follow the stage", () => {
+  const reading = stageRows({ stage: "reading" });
+  assert.deepEqual(reading.map((r) => r.state), ["active", "todo", "todo"]);
+  const indexing = stageRows({ stage: "indexing", passages_done: 42, passages_total: 124 });
+  assert.deepEqual(indexing.map((r) => r.state), ["done", "done", "active"]);
+  assert.equal(indexing[2].detail, "42 of 124 passages");
+});
+
+test("the quota meter is dashes for small limits and a bar for large ones", () => {
+  assert.deepEqual(meterModel({ remaining: 3, limit: 5 }), { remaining: 3, limit: 5, segmented: true });
+  assert.equal(meterModel({ remaining: 27, limit: 30 }).segmented, false);
+  assert.equal(meterModel({ remaining: null, limit: null }), null);
+});
+
+test("labels follow the chosen source", () => {
+  const corpus = { name: "FastAPI documentation", pages: 30 };
+  assert.equal(sourceLabel("sample", null, corpus), "FastAPI documentation");
+  assert.equal(sourceLabel("mine", { state: "ready", filename: "handbook.pdf" }, corpus), "handbook.pdf");
+  assert.equal(sourceLabel("mine", { state: "none" }, corpus), "your document");
+  assert.equal(docPillText("sample", null, corpus), "FastAPI documentation · 30 pages");
+  assert.equal(docPillText("mine", { state: "indexing", filename: "a.pdf" }, corpus), "Indexing a.pdf…");
+  assert.equal(docPillText("mine", { state: "none" }, corpus), "No document");
+});
+
+import { parseToken } from "../../src/rag/web/flow.js";
+
+test("the confirmation page reads its token from the link", () => {
+  assert.equal(parseRoute("#/verify?token=abc.def"), "verify");
+  assert.equal(parseToken("#/verify?token=abc.def-123_x"), "abc.def-123_x");
+  assert.equal(parseToken("#/verify"), "");
+  assert.equal(parseToken(""), "");
+  assert.equal(guard("verify", { enabled: true, authenticated: true, kind: "guest" }), null);   // a guest opening the link must still be confirmed
+});

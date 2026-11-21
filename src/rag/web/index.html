@@ -5,47 +5,217 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>RAG Citation Agent</title>
   <meta name="description" content="Answers only from the documents, and shows the proof. Every quote is checked against its source by code, not by AI.">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%234f46e5'/%3E%3Cpath d='M9 16.5l4.5 4.5L23 11.5' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="icon" type="image/png" sizes="128x128" href="/static/favicon.png">
+  <link rel="preload" href="/static/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/static/app.css">
   <link rel="stylesheet" href="/static/belt.css">
-  <link rel="stylesheet" href="/static/pages.css">
+  <link rel="stylesheet" href="/static/site.css">
 </head>
-<body>
+<body data-view="landing">
   <a class="skip" href="#main">Skip to the main content</a>
 
-  <header class="topbar">
-    <button class="menu-btn" id="menu-btn" type="button" aria-controls="sidebar" aria-expanded="false" aria-label="Show documents and settings">
-      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-    </button>
-    <a class="brand" href="#/" aria-label="RAG Citation Agent, home">
-      <span class="logo" aria-hidden="true">
-        <svg viewBox="0 0 32 32" width="28" height="28"><rect width="32" height="32" rx="8" fill="currentColor"/><path d="M9 16.5l4.5 4.5L23 11.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </span>
-      <span class="brand-name">RAG Citation Agent</span>
-    </a>
-    <span class="tagline">Answers only from the documents, and shows the proof.</span>
-    <nav class="topnav" aria-label="Project links">
-      <a class="navlink" href="https://github.com/novshita/rag-citation-agent" target="_blank" rel="noopener">
-        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.04-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.76 2.7 1.25 3.36.96.1-.75.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a10.9 10.9 0 0 1 5.77 0c2.2-1.49 3.16-1.18 3.16-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5z"/></svg>
-        <span>GitHub</span>
-      </a>
-      <a class="navlink accent" href="#/evaluation" id="nav-eval"><span class="long">How it was evaluated</span><span class="short">Evaluation</span></a>
-      <span class="account" id="account"></span>
-    </nav>
-  </header>
+  <!-- the purple ribbon behind the product pages (decorative) -->
+  <div class="ribbon" id="ribbon" aria-hidden="true">
+    <svg width="100%" height="100%" viewBox="0 0 1440 1200" preserveAspectRatio="xMidYMin slice" style="display:block">
+      <defs>
+        <linearGradient id="rb" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#7C3AED"/><stop offset="0.42" stop-color="#D946EF"/><stop offset="0.75" stop-color="#8B5CF6"/><stop offset="1" stop-color="#22D3EE"/></linearGradient>
+        <filter id="bl1" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="46"/></filter>
+        <filter id="bl2" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="12"/></filter>
+        <filter id="bl3" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="1.4"/></filter>
+      </defs>
+      <path d="M-80 820 C 260 800, 640 600, 920 380 S 1300 90, 1540 40" fill="none" stroke="url(#rb)" stroke-width="170" stroke-linecap="round" filter="url(#bl1)" opacity="0.5"/>
+      <path d="M-80 800 C 260 780, 640 580, 920 360 S 1300 70, 1540 20" fill="none" stroke="url(#rb)" stroke-width="54" stroke-linecap="round" filter="url(#bl2)" opacity="0.6"/>
+      <path d="M-80 770 C 260 750, 640 550, 920 330 S 1300 40, 1540 -10" fill="none" stroke="#F5D0FE" stroke-width="3" stroke-linecap="round" filter="url(#bl3)" opacity="0.3"/>
+      <path d="M-80 850 C 260 830, 640 630, 920 410 S 1300 120, 1540 70" fill="none" stroke="#3B82F6" stroke-width="10" stroke-linecap="round" filter="url(#bl2)" opacity="0.35"/>
+    </svg>
+  </div>
+
+  <header class="site-header" id="site-header"></header>
 
   <div class="shell">
     <aside class="sidebar" id="sidebar" aria-label="Indexed documents and settings"></aside>
     <main class="main" id="main" tabindex="-1"></main>
   </div>
 
-  <footer class="footbar">
+  <footer class="footbar" id="footbar">
     <span>On questions the documents can't answer, a plain chatbot answered 100%; this system answered 25%. 136 of 137 citations verified.</span>
     <a href="#/evaluation">How it was evaluated →</a>
   </footer>
 
   <noscript><p class="noscript">This page needs JavaScript to run. The project and its results are described at
     <a href="https://github.com/novshita/rag-citation-agent">github.com/novshita/rag-citation-agent</a>.</p></noscript>
+
+  <!-- Static page content, cloned by the scripts. It contains only our own fixed text; nothing from the server or a user is ever parsed as HTML. -->
+  <template id="tpl-hero">
+    <section class="hero" id="how">
+      <div class="hero-copy">
+        <h1 class="hero-h1"><span class="line">Ask the</span><span class="line">documents.</span><span class="line">See the proof.</span></h1>
+        <p class="hero-lede in">Every answer is written only from passages in the indexed documents. Every quote is checked against its source by code, not by AI. If the documents don't say, it says so.</p>
+        <div class="hero-cta in2">
+          <a class="pill-btn pill-white" href="#/app" data-focus="question">Ask a question<span class="chip"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"/></svg></span></a>
+          <a class="pill-btn pill-ghost" href="#/evaluation">How it was evaluated</a>
+        </div>
+        <div class="hero-eyebrow in3">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>
+          <span>Grounded Q&amp;A over the FastAPI docs · <span data-fill="pages">30</span> pages indexed.</span>
+        </div>
+      </div>
+
+      <div class="hero-visual" aria-hidden="true">
+        <svg class="stack" viewBox="0 0 340 520" fill="none">
+          <g stroke="rgba(255,255,255,.18)" stroke-width="1" stroke-dasharray="3 5" stroke-linecap="round"><path d="M170 0V44"/><path d="M300 150 330 200 330 300"/></g>
+          <path d="m163 36 7 9 7-9" stroke="rgba(255,255,255,.4)" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+          <g stroke="rgba(255,255,255,.3)" stroke-width="1" vector-effect="non-scaling-stroke">
+            <g transform="matrix(150 80 -150 80 170 300)"><rect width="1" height="1" fill="rgba(150,145,255,.10)" vector-effect="non-scaling-stroke"/></g>
+            <g transform="matrix(150 80 -150 80 170 274)"><rect width="1" height="1" fill="rgba(150,145,255,.12)" vector-effect="non-scaling-stroke"/></g>
+            <g transform="matrix(150 80 -150 80 170 248)"><rect width="1" height="1" fill="rgba(150,145,255,.14)" vector-effect="non-scaling-stroke"/></g>
+            <g transform="matrix(150 80 -150 80 170 222)"><rect width="1" height="1" fill="rgba(150,145,255,.16)" vector-effect="non-scaling-stroke"/></g>
+            <g transform="matrix(150 80 -150 80 170 196)"><rect width="1" height="1" fill="rgba(150,145,255,.18)" vector-effect="non-scaling-stroke"/></g>
+            <g transform="matrix(150 80 -150 80 170 170)"><rect width="1" height="1" fill="rgba(150,145,255,.2)" vector-effect="non-scaling-stroke"/></g>
+            <g transform="matrix(150 80 -150 80 170 144)"><rect width="1" height="1" fill="rgba(150,145,255,.24)" vector-effect="non-scaling-stroke"/></g>
+          </g>
+          <g transform="matrix(150 80 -150 80 170 96)">
+            <rect width="1" height="1" fill="#8A82EE" fill-opacity="0.92" stroke="rgba(6,6,7,.55)" stroke-width="1" vector-effect="non-scaling-stroke"/>
+            <rect x="0.17" y="0.43" width="0.66" height="0.1" fill="#E879F9" fill-opacity="0.55"/>
+            <path d="M.17 .2H.83M.17 .32H.7M.17 .43H.83M.17 .53H.83M.17 .66H.78M.17 .78H.6" stroke="rgba(255,255,255,.6)" stroke-width="1.2" vector-effect="non-scaling-stroke" stroke-linecap="round"/>
+          </g>
+          <circle cx="296" cy="172" r="17" fill="#34D399"/>
+          <path d="m288 172 5.5 5.5L304 166" stroke="#06241A" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+
+        <div class="trace" role="group" aria-label="Example trace: a question moves through retrieval, the relevance gate, answer writing and verification">
+          <div class="trace-top">
+            <div class="trace-q">
+              <div class="mono-cap">Query Q-0412 · FastAPI docs</div>
+              <div class="trace-title">Which package do I need for file uploads?</div>
+            </div>
+            <span class="trace-status"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="1.1s" repeatCount="indefinite"/></path></svg>Retrieving</span>
+          </div>
+          <div class="trace-stages">
+            <div><i class="on"></i><span class="on">Retrieve</span></div><div><i></i><span>Gate</span></div><div><i></i><span>Answer</span></div><div><i></i><span>Verify</span></div>
+          </div>
+          <div class="trace-block">
+            <div class="mono-cap">Passages · ranked by score</div>
+            <div class="trace-row"><span class="doc-ico on"><i></i></span><span class="grow"><b class="mono">tutorial/request-files.md</b><small>Score 0.61 · above the 0.42 threshold</small></span><span class="st st-on">Reading</span></div>
+            <div class="trace-row dim"><span class="doc-ico"></span><span class="grow"><b class="mono">tutorial/request-forms.md</b><small>Score 0.52</small></span><span class="st">Waiting</span></div>
+            <div class="trace-row dimmer"><span class="doc-ico"></span><span class="grow"><b class="mono">tutorial/body.md</b><small>Score 0.47</small></span><span class="st">Waiting</span></div>
+          </div>
+          <div class="trace-block checks">
+            <div class="mono-cap">Checks before any answer ships</div>
+            <div class="check"><i></i><span><b>Best match clears the gate</b> or the system stops and says so.</span></div>
+            <div class="check"><i></i><span><b>Every claim carries a quote</b> from a retrieved passage.</span></div>
+            <div class="check"><i></i><span><b>Quotes match the source exactly,</b> checked in code, not by AI.</span></div>
+          </div>
+          <div class="trace-foot">Working · 0.4 s · 0 tokens so far</div>
+        </div>
+
+        <div class="fchip float" style="left:0;top:0"><span class="fchip-ico"></span><span><b>request-files.md</b><small>Tutorial · 4 pp</small></span></div>
+        <div class="fchip float" style="left:286px;top:-14px;animation-delay:-1.5s"><span class="fchip-ico"></span><span><b>server-workers.md</b><small>Deployment · 3 pp</small></span></div>
+        <div class="fchip float" style="left:150px;bottom:0;animation-delay:-3s"><span class="fchip-ico"></span><span><b>docker.md</b><small>Deployment · 6 pp</small></span></div>
+        <div class="fchip float" style="right:0;top:290px;animation-delay:-4.5s"><span class="fchip-ok"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#06241A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7"/></svg></span><span><b>Quote found in source</b><small>1 of 1 verified</small></span></div>
+      </div>
+    </section>
+  </template>
+
+  <template id="tpl-landing">
+    <div class="lp">
+      <section class="lp-hero">
+        <div class="lp-hero-copy">
+          <span class="lp-chip"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 5 6v5c0 4.5 3 8 7 10 4-2 7-5.5 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></svg>Grounded Q&amp;A over the FastAPI docs</span>
+          <h1 class="lp-h1">Ask the documents.<br><span>See the proof.</span></h1>
+          <p class="lp-lede">Every answer is written only from passages in the indexed documents. Every quote is checked against its source by code, not by AI. If the documents don't say, it says so.</p>
+          <div class="lp-cta">
+            <a class="lp-btn lp-primary" href="#/login" data-cta>Try the demo<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg></a>
+            <a class="lp-btn lp-ghost" href="#/evaluation">How it was evaluated</a>
+          </div>
+          <ul class="lp-checks">
+            <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7"/></svg>No outside knowledge</li>
+            <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7"/></svg>Quotes verified in code</li>
+            <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7"/></svg>Refuses to guess</li>
+          </ul>
+        </div>
+
+        <div class="lp-example" aria-label="An example answer">
+          <div class="lp-example-bar"><i></i><i></i><i></i><span>example answer</span></div>
+          <div class="lp-example-body">
+            <div><div class="mono-cap">Question</div><div class="lp-example-q">Which Python package must be installed to receive uploaded files?</div></div>
+            <div class="lp-example-meta">
+              <span class="lp-status"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8.5 12.5 2.5 2.5 4.5-5"/></svg>Answered</span>
+              <span class="lp-conf">Confidence <b>0.87</b><span class="lp-bar"><i style="width:87%"></i></span></span>
+              <span class="mono small">2.2 s · 1,860 tokens</span>
+            </div>
+            <p class="lp-example-a">To receive uploaded files, you must install python-multipart.</p>
+            <div class="lp-proof">
+              <div class="lp-proof-head"><span class="lp-num">[1]</span><span class="mono">tutorial/request-files.md</span><span class="lp-found"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7"/></svg>Quote found in source</span></div>
+              <p>You can define files to be uploaded by the client using File. Note: <mark>To receive uploaded files, first install python-multipart.</mark> This is because uploaded files are sent as form data.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="lp-stats" aria-label="Key numbers">
+        <div><b>136 / 137</b><span>citations verified against their source passages</span></div>
+        <div><b>25%</b><span>answered on questions the documents can't answer, vs 100% for a plain chatbot</span></div>
+        <div><b><span data-fill="pages">30</span> pages</b><span>FastAPI documentation indexed, about <span data-fill="words">49,000</span> words</span></div>
+        <div><b data-fill="threshold">0.42</b><span>relevance threshold the best match must clear before any model call</span></div>
+      </section>
+
+      <section class="lp-section" id="example">
+        <div data-slot="belt"></div>
+        <ol class="lp-steps">
+          <li><div class="lp-step-head"><span class="n">1</span><b>Retrieve</b><span class="tag">code</span></div><p>Find the most relevant passages in the indexed documents.</p></li>
+          <li><div class="lp-step-head"><span class="n">2</span><b>Relevance gate</b><span class="tag">code</span></div><p>If none is close enough, stop and say “I don't know”.</p></li>
+          <li><div class="lp-step-head"><span class="n">3</span><b>Answer with quotes</b><span class="tag" data-fill="llm">model</span></div><p>The model writes the answer and must quote exact text for every claim.</p></li>
+          <li><div class="lp-step-head"><span class="n">4</span><b>Verify in code</b><span class="tag">code</span></div><p>Every quote is checked against its source. Fake quotes are removed.</p></li>
+        </ol>
+      </section>
+
+      <section class="lp-section lp-principles" id="principles">
+        <div class="lp-sec-head">
+          <div><p class="mono-eyebrow">Principles</p><h2>Built to be checked, not trusted.</h2></div>
+          <p class="lp-sec-note">Three rules decide every answer. None of them depends on the language model behaving.</p>
+        </div>
+        <div class="lp-cards">
+          <article><span class="ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5h7a3 3 0 0 1 3 3v12a2 2 0 0 0-2-2H2z"/><path d="M22 5h-7a3 3 0 0 0-3 3v12a2 2 0 0 1 2-2h8z"/></svg></span><h3>Only your documents</h3><p>No outside knowledge. Answers use retrieved passages only, so every statement traces back to a page you indexed.</p><div class="foot">Sources shown with every answer</div></article>
+          <article><span class="ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4 6v6c0 4.5 3.2 8 8 9 4.8-1 8-4.5 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg></span><h3>Every quote verified</h3><p>Code, not AI, checks each quote against its source. Anything that does not match exactly is removed.</p><div class="foot">136 of 137 citations verified</div></article>
+          <article><span class="ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12h8"/></svg></span><h3>Refuses to guess</h3><p>If no passage is relevant enough, it stops at the gate. No model is called and nothing is invented.</p><div class="foot">Best match below <span data-fill="threshold">0.42</span> means no answer</div></article>
+        </div>
+      </section>
+
+      <section class="lp-evidence" id="evidence">
+        <div class="lp-evidence-in">
+          <div class="lp-evidence-copy">
+            <p class="mono-eyebrow">Evidence</p>
+            <h2>Measured, not claimed.</h2>
+            <p>On questions the documents can't answer, a plain chatbot answered every one. This system answered 2 of 8, both hedged and cited; the relevance gate stops the rest before any model is called.</p>
+            <a class="lp-btn lp-white" href="#/evaluation">How it was evaluated<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg></a>
+          </div>
+          <div class="lp-evidence-card">
+            <div class="ev"><div class="ev-top"><span>Plain chatbot · answered anyway</span><b>100%</b></div><div class="ev-track"><i style="width:100%" class="grey"></i></div><p>On questions the documents cannot answer. Lower is better.</p></div>
+            <div class="ev"><div class="ev-top"><span>RAG Citation Agent · answered anyway</span><b>25%</b></div><div class="ev-track"><i style="width:25%" class="accent"></i></div><p>The relevance gate declines the rest before any model call.</p></div>
+            <div class="ev"><div class="ev-top"><span>Citations verified in code</span><b>136 / 137</b></div><div class="ev-track"><i style="width:99.3%" class="green"></i></div><p>Each quote is matched exactly against its source passage.</p></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="lp-band">
+        <div>
+          <h2>Ask your first question.</h2>
+          <p><span data-fill="pages">30</span> pages of FastAPI documentation are already indexed. Try an answerable question, then one it can't answer.</p>
+        </div>
+        <div class="lp-band-btns">
+          <a class="lp-btn lp-white" href="#/login" data-cta>Try the demo<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg></a>
+          <a class="lp-btn lp-outline" href="https://github.com/novshita/rag-citation-agent" target="_blank" rel="noopener">View on GitHub</a>
+        </div>
+      </section>
+
+      <footer class="lp-footer">
+        <span>RAG Citation Agent · Answers only from the documents, and shows the proof.</span>
+        <nav aria-label="Footer"><a href="#/evaluation">Evaluation</a><a href="https://github.com/novshita/rag-citation-agent" target="_blank" rel="noopener">GitHub</a><span>FastAPI docs · MIT licensed</span></nav>
+      </footer>
+    </div>
+  </template>
 
   <script type="module" src="/static/app.js"></script>
 </body>

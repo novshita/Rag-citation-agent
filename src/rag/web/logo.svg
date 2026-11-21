@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 84" role="img" aria-label="RAG Citation Agent">
+  <style>
+    :root { --doc-a: #1e1b4b; --doc-b: #4338ca; --fold: #818cf8; --line: #ffffff; --badge-a: #7c6cf2; --badge-b: #4f46e5;
+            --orbit-a: #312e81; --orbit-b: #6366f1; --spark: #4f46e5; }
+  </style>
+  <defs>
+    <linearGradient id="doc" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color: var(--doc-a)"/><stop offset="1" style="stop-color: var(--doc-b)"/></linearGradient>
+    <linearGradient id="badge" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color: var(--badge-a)"/><stop offset="1" style="stop-color: var(--badge-b)"/></linearGradient>
+    <linearGradient id="orbit" x1="0" y1="1" x2="1" y2="0"><stop offset="0" style="stop-color: var(--orbit-a)"/><stop offset="1" style="stop-color: var(--orbit-b)"/></linearGradient>
+  </defs>
+  <!-- orbit: a complete tilted ring. The upper half passes behind the document, the lower half in front of it -->
+  <ellipse cx="50" cy="44" rx="47" ry="15" transform="rotate(-24 50 44)" fill="none" stroke="url(#orbit)" stroke-width="2.6"/>
+  <!-- sparkle -->
+  <path d="M17 19 Q17.9 28.1 27 29 Q17.9 29.9 17 39 Q16.1 29.9 7 29 Q16.1 28.1 17 19 Z" style="fill: var(--spark)"/>
+  <!-- the document: the source -->
+  <path d="M35 12 H54 L65 23 V53 a4 4 0 0 1 -4 4 H35 a4 4 0 0 1 -4 -4 V16 a4 4 0 0 1 4 -4 Z" fill="url(#doc)"/>
+  <path d="M54 12 V21 a2 2 0 0 0 2 2 H65 Z" style="fill: var(--fold)"/>
+  <g style="fill: var(--line)" opacity="0.95">
+    <rect x="37" y="28" width="22" height="2.6" rx="1.3"/><rect x="37" y="35" width="22" height="2.6" rx="1.3"/><rect x="37" y="42" width="15" height="2.6" rx="1.3"/>
+  </g>
+  <ellipse cx="50" cy="44" rx="47" ry="15" transform="rotate(-24 50 44)" fill="none" stroke="url(#orbit)" stroke-width="2.6"
+           pathLength="100" stroke-dasharray="50 50"/>
+  <!-- the quote badge: the exact citation -->
+  <circle cx="64" cy="57" r="12" fill="url(#badge)"/>
+  <g fill="#fff" stroke="#fff" stroke-linecap="round">
+    <circle cx="59.6" cy="54.2" r="2.7" stroke="none"/><path d="M62 55.4 Q61.8 59.8 58 61.6" fill="none" stroke-width="2"/>
+    <circle cx="67.6" cy="54.2" r="2.7" stroke="none"/><path d="M70 55.4 Q69.8 59.8 66 61.6" fill="none" stroke-width="2"/>
+  </g>
+</svg>

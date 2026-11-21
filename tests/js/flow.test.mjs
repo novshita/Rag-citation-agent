@@ -52,3 +52,22 @@ test("the header names who is signed in", () => {
   assert.equal(whoLabel(out), "");
   assert.equal(whoLabel(open), "");
 });
+
+import { parseAnchor } from "../../src/rag/web/flow.js";
+
+test("landing sections are anchors on the landing page", () => {
+  assert.equal(parseRoute("#/example"), "landing");
+  assert.equal(parseAnchor("#/example"), "example");
+  assert.equal(parseAnchor("#/evidence"), "evidence");
+  assert.equal(parseAnchor("#/app"), null);
+  assert.equal(parseAnchor(""), null);
+});
+
+import { approxWords } from "../../src/rag/web/flow.js";
+
+test("word counts are rounded to the nearest thousand", () => {
+  assert.equal(approxWords(49333), "49,000");
+  assert.equal(approxWords(1499), "1,000");
+  assert.equal(approxWords(0), "");
+  assert.equal(approxWords(null), "");
+});

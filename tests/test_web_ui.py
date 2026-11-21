@@ -16,6 +16,19 @@ def test_the_page_links_only_to_files_that_exist():
         assert (WEB / path).is_file(), path
 
 
+def test_static_files_named_in_scripts_and_styles_exist():
+    for source in [*WEB.glob("*.js"), *WEB.glob("*.css")]:
+        for path in re.findall(r"/static/([\w./-]+\.(?:svg|png|woff2|json|css|js))", source.read_text()):
+            assert (WEB / path).is_file(), f"{source.name} names missing /static/{path}"
+
+
+def test_the_page_templates_the_scripts_clone_exist():
+    html = (WEB / "index.html").read_text()
+    for source in WEB.glob("*.js"):
+        for name in re.findall(r'getElementById\("(tpl-[\w-]+)"\)', source.read_text()):
+            assert f'<template id="{name}">' in html, f"{source.name} needs <template id={name}>"
+
+
 def test_every_javascript_import_resolves():
     for js in WEB.glob("*.js"):
         for target in re.findall(r'from\s+"\./([^"]+)"', js.read_text()):

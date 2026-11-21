@@ -2,6 +2,7 @@
   "name": "FastAPI documentation",
   "note": "MIT licensed",
   "tagline": "Grounded Q&A over the FastAPI docs",
+  "words": 49333,
   "examples": [
     {
       "tag": "Answered",

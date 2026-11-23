@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 84" role="img" aria-label="RAG Citation Agent">
   <style>
-    :root { --doc-a: #1e1b4b; --doc-b: #4338ca; --fold: #818cf8; --line: #ffffff; --badge-a: #7c6cf2; --badge-b: #4f46e5;
-            --orbit-a: #312e81; --orbit-b: #6366f1; --spark: #4f46e5; }
+    :root { --doc-a: #1e1b4b; --doc-b: #4338CA; --fold: #818CF8; --line: #ffffff; --badge-a: #7C6CF2; --badge-b: #4F46E5;
+            --orbit-a: #312e81; --orbit-b: #6366F1; --spark: #4F46E5; }
   </style>
   <defs>
     <linearGradient id="doc" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color: var(--doc-a)"/><stop offset="1" style="stop-color: var(--doc-b)"/></linearGradient>

@@ -14,8 +14,8 @@ const CELL = 3;            // the dissolve grid, in px
 
 // Deep to pale. Light theme: the line edge is the deepest colour. Dark theme: the line edge is the palest.
 const PALETTE = {
-  light: { colors: ["#3730a3", "#4338ca", "#4f46e5", "#6366f1", "#818cf8", "#a5b4fc", "#c7d2fe"], rgb: "79,70,229", haze: 0.3 },
-  dark: { colors: ["#6366f1", "#818cf8", "#a5b4fc", "#c7d2fe", "#e0e7ff", "#eef2ff", "#ffffff"], rgb: "129,140,248", haze: 0.38 },
+  light: { colors: ["#3730A3", "#4338CA", "#4F46E5", "#6366F1", "#818CF8", "#A5B4FC", "#C7D2FE"], rgb: "79,70,229", haze: 0.3 },
+  dark: { colors: ["#6366F1", "#818CF8", "#A5B4FC", "#C7D2FE", "#E0E7FF", "#EEF2FF", "#ffffff"], rgb: "129,140,248", haze: 0.38 },
 };
 
 function el(tag, className, ...children) {

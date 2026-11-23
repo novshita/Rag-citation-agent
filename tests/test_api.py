@@ -282,6 +282,25 @@ def test_upload_then_status_then_ask_it(tmp_path):
     assert asked == [("how much vacation?", 3, c.get("/documents").json()["passages_total"])] and seen == []   # the sample index was not used
 
 
+def test_the_uploaded_file_can_be_viewed_by_its_owner_only(tmp_path):
+    c, *_ = with_uploads(tmp_path)
+    assert c.get("/documents/file").status_code == 404                     # nothing uploaded yet
+    pdf = make_pdf(["Alpha beta gamma"])
+    put(c, "my notes.pdf", pdf)
+    shown = c.get("/documents/file")
+    assert shown.status_code == 200 and shown.content == pdf
+    assert shown.headers["content-type"] == "application/pdf" and shown.headers["cache-control"] == "no-store"
+    assert shown.headers["x-content-type-options"] == "nosniff" and "inline" in shown.headers["content-disposition"]
+
+    put(c, "n.md", b"<script>alert(1)</script> text")
+    text = c.get("/documents/file")
+    assert text.headers["content-type"].startswith("text/plain") and text.content == b"<script>alert(1)</script> text"
+
+    c.cookies.clear()
+    assert c.get("/documents/file").status_code == 401                     # no session, no file
+    c.delete("/documents")
+
+
 def test_asking_the_sample_docs_still_works_and_is_the_default(tmp_path):
     c, seen, asked, _ = with_uploads(tmp_path)
     put(c, "handbook.md", DOC)

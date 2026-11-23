@@ -12,6 +12,7 @@ import {
 } from "./flow.js";
 import { renderHeader } from "./header.js";
 import { getDocument, removeDocument, sendDocument } from "./upload.js";
+import { closeViewer, openViewer } from "./viewer.js";
 import { buildLanding } from "./landing.js";
 import { buildLogin } from "./login.js";
 import { buildVerify } from "./verify.js";
@@ -149,10 +150,14 @@ const extOf = (name) => (name.includes(".") ? name.split(".").pop().toUpperCase(
 
 function fileCard(doc, extra) {
   const size = [formatBytes(doc.size_bytes), doc.pages ? plural(doc.pages, "page") : ""].filter(Boolean).join(" · ");
-  return h("div", { class: `filecard${extra ? ` ${extra}` : ""}` },
+  const view = (event) => openViewer(doc, size, event.currentTarget);
+  return h("div", { class: `filecard viewable${extra ? ` ${extra}` : ""}`, role: "button", tabindex: "0", title: "Click to view this document",
+    "aria-label": `View ${doc.filename}`, onclick: view,
+    onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); view(e); } } },
     h("span", { class: "ftype" }, extOf(doc.filename)),
-    h("div", {}, h("p", { class: "fname", title: doc.filename }, doc.filename),
-      extra === "ready" ? h("p", { class: "fready" }, icon("tick", 14), "Ready to ask") : h("p", { class: "fsize" }, size)));
+    h("div", { class: "fmain" }, h("p", { class: "fname", title: doc.filename }, doc.filename),
+      extra === "ready" ? h("p", { class: "fready" }, icon("tick", 14), "Ready to ask") : h("p", { class: "fsize" }, size)),
+    h("span", { class: "fview", "aria-hidden": "true" }, icon("eye", 17)));
 }
 
 function renderIndexing(doc) {
@@ -186,6 +191,7 @@ function pickFile() {
 }
 
 async function handleFile(file) {
+  closeViewer(false);
   state.uploadError = null;
   const problem = checkFile(file, uploadLimits());
   if (problem) { state.uploadError = problem; state.doc = { state: "none" }; afterDocumentChange(); return; }
@@ -215,6 +221,7 @@ function schedulePoll() {
 }
 
 async function removeIt() {
+  closeViewer(false);
   clearTimeout(pollTimer);
   state.uploadError = null;
   try { await removeDocument(); } catch { /* it is gone, or it will expire */ }
@@ -233,6 +240,7 @@ async function refreshDocument() {
 
 function setSource(next) {
   if (state.source === next) return;
+  closeViewer(false);
   state.controller?.abort();
   state.source = next;
   state.phase = "idle";
@@ -648,6 +656,7 @@ function paintHeader() {
 }
 
 async function signOut() {
+  closeViewer(false);
   try { await fetch("/auth/logout", { method: "POST" }); } catch { /* the cookie expires on its own */ }
   clearTimeout(pollTimer);
   state.phase = "idle";
@@ -676,6 +685,7 @@ function route() {
 
   if (wanted === "landing" && currentView === "landing") { scrollToAnchor(anchor); return; }   // same page, just a different section
 
+  closeViewer(false);
   page?.destroy?.();
   page = null;
   ui.result = null;

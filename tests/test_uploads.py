@@ -106,6 +106,36 @@ def test_upload_becomes_ready_and_can_be_asked():
     assert kind == "answered" and count == status["passages_total"] and (question, top_k) == ("how much vacation?", 4)
 
 
+def test_the_visitor_can_get_their_file_back_to_check_it():
+    m = manager()
+    m.start("g:1", "handbook.md", b"\xef\xbb\xbfHello <b>there</b>")
+    name, media, content = m.file("g:1")
+    assert (name, media, content) == ("handbook.md", "text/plain; charset=utf-8", b"Hello <b>there</b>")   # text is never served as a page
+    pdf = make_pdf(["Alpha beta gamma"])
+    m.start("g:1", "a.pdf", pdf)
+    assert m.file("g:1") == ("a.pdf", "application/pdf", pdf)
+    with pytest.raises(UploadError) as e:
+        m.file("g:2")                                   # another session has no file
+    assert e.value.status == 404
+
+
+def test_the_file_is_gone_after_remove_expiry_or_a_failed_read():
+    clock = Clock()
+    m = manager(clock=clock, ttl_seconds=60)
+    m.start("g:1", "a.md", TEXT)
+    m.delete("g:1")
+    with pytest.raises(UploadError):
+        m.file("g:1")
+    m.start("g:1", "a.md", TEXT)
+    clock.now += 61
+    with pytest.raises(UploadError):
+        m.file("g:1")
+    m.start("g:1", "bad.pdf", b"%PDF-not really")
+    assert m.status("g:1")["state"] == "error"
+    with pytest.raises(UploadError):
+        m.file("g:1")
+
+
 def test_asking_before_there_is_a_document_is_a_clear_409():
     m = manager()
     with pytest.raises(UploadError) as e:

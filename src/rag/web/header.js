@@ -12,13 +12,44 @@ function brand() {
     h("span", { class: "sh-name" }, h("span", { class: "sh-rag" }, "RAG"), h("span", { class: "sh-sub" }, "Citation Agent")));
 }
 
+let menuCount = 0;
+
+/** Close any open account menu. */
+function closeMenus(except = null) {
+  for (const menu of document.querySelectorAll(".acct.open")) {
+    if (menu === except) continue;
+    menu.classList.remove("open");
+    menu.querySelector(".acct-btn")?.setAttribute("aria-expanded", "false");
+  }
+}
+document.addEventListener("click", (event) => { if (!event.target.closest?.(".acct")) closeMenus(); });
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  const open = document.querySelector(".acct.open");
+  if (open) { closeMenus(); open.querySelector(".acct-btn")?.focus(); }
+});
+
+/** A profile button that opens a small menu with who is signed in and the sign-out action. */
 function accountPill(me, onSignOut) {
   if (!me.enabled || !me.authenticated) return null;
-  const label = me.kind === "guest" ? "Guest · Demo" : me.email;
-  return h("span", { class: "sh-pillbox" },
-    h("i", { class: "dot", "aria-hidden": "true" }),
-    h("span", { class: "sh-who", title: label }, label),
-    h("button", { class: "sh-signout", type: "button", onclick: onSignOut }, "Sign out"));
+  const guest = me.kind === "guest";
+  const id = `acct-menu-${++menuCount}`;
+  const button = h("button", { class: "acct-btn", type: "button", "aria-haspopup": "true", "aria-expanded": "false", "aria-controls": id,
+    "aria-label": "Account menu", title: "Account",
+    onclick: (event) => {
+      const root = event.currentTarget.closest(".acct");
+      const opening = !root.classList.contains("open");
+      closeMenus(root);
+      root.classList.toggle("open", opening);
+      event.currentTarget.setAttribute("aria-expanded", String(opening));
+    } }, icon("user", 20));
+  const menu = h("div", { class: "acct-menu", id, role: "group", "aria-label": "Account" },
+    h("div", { class: "acct-who" },
+      h("span", { class: "acct-avatar", "aria-hidden": "true" }, icon("user", 18)),
+      h("div", {}, h("p", { class: "acct-k" }, guest ? "Browsing as" : "Signed in as"),
+        h("p", { class: "acct-email", title: guest ? "Guest" : me.email }, guest ? "Guest · Demo" : me.email))),
+    h("button", { class: "acct-out", type: "button", onclick: onSignOut }, icon("logout", 16), "Sign out"));
+  return h("div", { class: "acct" }, button, menu);
 }
 
 /**

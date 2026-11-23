@@ -129,6 +129,7 @@ class UploadState:
     error: str | None = None
     finished: float | None = None
     collection: object = None
+    data: bytes | None = None               # the file as uploaded, kept in memory only so the visitor can look at it again
     name: str = field(default_factory=lambda: "u" + secrets.token_hex(12))   # unique per upload, so a late cleanup can't touch a newer index
     cancel: threading.Event = field(default_factory=threading.Event)
 
@@ -171,7 +172,7 @@ class UploadManager:
                 self._drop(subject)
             self._starts[subject] = recent + [self.clock()]
             now = self.clock()
-            state = UploadState(filename=filename, size_bytes=len(data), started=now, touched=now)
+            state = UploadState(filename=filename, size_bytes=len(data), started=now, touched=now, data=data)
             self._states[subject] = state
         if self.background:
             threading.Thread(target=self._run, args=(subject, state, data), daemon=True, name="indexing").start()
@@ -187,6 +188,18 @@ class UploadManager:
                 return {"state": "none", "limits": self.limits()}
             state.touched = self.clock()
             return self._snapshot(state)
+
+    def file(self, subject: str) -> tuple[str, str, bytes]:
+        """(filename, media type, content) to show the visitor their own upload. Raises UploadError(404) if there is none."""
+        self.sweep()
+        with self._lock:
+            state = self._states.get(subject)
+            if state is None or state.data is None or state.state == "error":
+                raise UploadError(404, "There is no document to show.")
+            state.touched = self.clock()
+            if state.filename.lower().endswith(".pdf"):
+                return state.filename, "application/pdf", state.data
+            return state.filename, "text/plain; charset=utf-8", _decode(state.data).encode("utf-8")   # shown as plain text, never as a page
 
     def delete(self, subject: str) -> None:
         with self._lock:
@@ -303,7 +316,7 @@ class UploadManager:
         self._cleanup(name)
         with self._lock:
             if self._states.get(subject) is state:
-                state.state, state.error, state.finished = "error", message, self.clock()
+                state.state, state.error, state.finished, state.data = "error", message, self.clock(), None
 
     def _cleanup(self, name: str) -> None:
         try:

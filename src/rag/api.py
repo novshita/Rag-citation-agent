@@ -19,7 +19,7 @@ import secrets
 import time
 from pathlib import Path
 from typing import Literal
-from urllib.parse import unquote
+from urllib.parse import quote, unquote
 
 from fastapi import FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import FileResponse
@@ -363,6 +363,19 @@ def create_app(
                 return uploads.start(subject, filename, bytes(data))
             except UploadError as error:
                 raise upload_problem(error) from None
+
+        @app.get("/documents/file")
+        def document_file(request: Request) -> Response:
+            """The visitor's own upload, for the viewer. Only the session that uploaded it can fetch it."""
+            try:
+                filename, media_type, content = uploads.file(owner(request))
+            except UploadError as error:
+                raise upload_problem(error) from None
+            ascii_name = filename.encode("ascii", "replace").decode().replace('"', "").replace("?", "_")
+            return Response(content, media_type=media_type, headers={
+                "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
+                "Content-Disposition": f"inline; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(filename)}",
+            })
 
         @app.delete("/documents")
         def remove_document(request: Request, response: Response) -> dict:

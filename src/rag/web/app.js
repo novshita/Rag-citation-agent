@@ -346,14 +346,14 @@ function renderSteps() {
 }
 
 function renderMeasured() {
-  return h("section", { class: "measured" },
+  const stat = (value, small, text) => h("div", { class: "m-stat" },
+    h("div", { class: "m-num" }, value, small ? h("small", {}, small) : null), h("p", {}, text));
+  return h("section", { class: "panel measured" },
     h("p", { class: "eyebrow" }, "Measured, not claimed"),
-    h("div", { class: "big" }, "136 / 137"),
-    h("p", { class: "m-text" }, "citations verified against their source passages, in the evaluation on the sample docs."),
-    h("div", { class: "m-rule" }),
-    h("div", { class: "big" }, "25%", h("small", {}, "vs 100%")),
-    h("p", { class: "m-text" }, "answered on questions the sample docs can't answer, against a plain chatbot."),
-    h("a", { class: "m-btn", href: "#/evaluation" }, "How it was evaluated", icon("arrow", 16)));
+    h("div", { class: "m-stats" },
+      stat("136 / 137", null, "quotes verified in code"),
+      stat("25%", "vs 100%", "of unanswerable questions answered")),
+    h("a", { class: "m-link", href: "#/evaluation" }, "How it was evaluated", icon("arrow", 15)));
 }
 
 /* ---------- ask view ---------- */

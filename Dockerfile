@@ -3,9 +3,10 @@
 #   docker build -t rag-agent .
 #   docker run --rm -p 8000:8000 --env-file .env -v "$PWD/data:/app/data" rag-agent
 #
-# The index (data/chroma) and the secrets (.env) are NOT in the image: mount them.
-# Build the index first, either on the host (python -m rag ingest data/raw) or in the image:
-#   docker run --rm --env-file .env -v "$PWD/data:/app/data" rag-agent python -m rag ingest data/raw
+# The sample documents (data/raw) are indexed while the image is built, so the image is self-contained and
+# can run on a host that can't mount a folder. The secrets (.env) are NOT in the image: pass them in at run time.
+# Optional: -v "$PWD/data:/app/data" keeps accounts and the query log between runs (it also replaces the baked index
+# with the one in that folder).
 FROM python:3.11-slim
 
 ENV PYTHONUNBUFFERED=1 \
@@ -25,6 +26,10 @@ RUN pip install ".[api]"
 # Bake the embedding model into the image so the first request doesn't download it.
 ARG EMBEDDING_MODEL=all-MiniLM-L6-v2
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('${EMBEDDING_MODEL}')"
+
+# Index the sample documents now (embeddings are computed here, once, not on every start).
+COPY data/raw ./data/raw
+RUN python -m rag ingest data/raw
 
 RUN useradd --create-home app && mkdir -p /app/data && chown -R app /app/data /opt/hf
 USER app

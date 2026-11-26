@@ -9,6 +9,12 @@ Ask questions about a set of documents and get answers that are **backed by quot
 > **Headline result:** On 8 questions the documents can't answer, a plain chatbot answered all 8 (**100%**); this project answered **2 (25%)**, and both were hedged ("the documents don't cover this, but...") with cited sources. It answered **89%** of the 22 answerable questions correctly (86-91% over three runs), wrongly refused **9%** (2 questions), and **136 of 137** citations checked out against the source text; the one that didn't was removed before it reached an answer.
 > *(30 test questions, three independent runs. Against basic RAG, hallucination is identical; see [Results](#results) for what that means.)*
 
+![A 25-second recording of the web app: the landing page, then an answered question with the quote highlighted in its source, then a question the documents can't answer, where it abstains](docs/demo/demo-ask.gif)
+
+*A real recording of the app (about 25 seconds): sign in as a guest, ask a question the FastAPI docs answer and see the quote verified in its source, then ask one they don't cover and watch it decline without calling the model.*
+
+**About a live demo:** there is no hosted copy. The app runs an embedding model in memory (about 0.5 GB of RAM) and calls a paid LLM, which free hosting tiers don't suit. It runs locally with one Docker command (see [Quick start](#quick-start)), and the recordings and screenshots below show it end to end on the real system.
+
 ---
 
 ## Demo
@@ -29,11 +35,17 @@ Every answer shows its proof: the exact quote, highlighted inside the source pas
 
 ![An answered question: status, confidence, the claim, and the quote highlighted in its source passage](docs/screenshots/demo-answered.png)
 
+Close up of the proof: the quote the model gave, found exactly in the source passage and highlighted there, with how many quotes were verified in code and the passages that were retrieved.
+
+![A close-up of one cited quote highlighted inside its source passage, marked "Quote found in source"](docs/screenshots/demo-citation.png)
+
 When the documents don't cover a question, it says so. Here the relevance gate stopped it before any model was called:
 
 ![An abstained question: the best match is below the relevance threshold, so no model call was made](docs/screenshots/demo-abstained.png)
 
 **Bring your own document.** Switch to "Your document", drop in a PDF, Markdown or text file (up to 5 MB and 50 pages), and ask about it. It goes through the same pipeline: retrieve, relevance gate, quoted answer, verify in code.
+
+![A 20-second recording: upload a Markdown file, open it in the side panel to check it is the right one, then ask a question about it and see the quote highlighted in the uploaded text](docs/demo/demo-upload.gif)
 
 ![Choosing your own document: the upload area and the privacy note](docs/screenshots/demo-upload.png)
 
@@ -168,7 +180,7 @@ pip install -e ".[web]"
 WEB_FALLBACK=true python -m rag ask "how do I add rate limiting?"   # or set WEB_FALLBACK=true in .env
 ```
 
-Web UI and HTTP API (one server: the page is at `/`, the JSON API behind it). The index and `.env` are mounted, never baked into the Docker image:
+Web UI and HTTP API (one server: the page is at `/`, the JSON API behind it). The Docker image builds the search index of the sample documents while it is built, so it runs on its own; `.env` (your API key) is passed in at run time and never baked into the image:
 
 ```bash
 pip install -e ".[api]"
@@ -178,7 +190,8 @@ curl -X POST localhost:8000/ask -H 'Content-Type: application/json' \
      -d '{"question": "how do background tasks work?"}'
 
 docker build -t rag-agent .
-docker run --rm -p 8000:8000 --env-file .env -v "$PWD/data:/app/data" rag-agent
+docker run --rm -p 8000:8000 --env-file .env rag-agent
+# add -v "$PWD/data:/app/data" to keep accounts and the query log between runs
 ```
 
 `GET /` is the web UI (plain HTML, CSS and JavaScript in [src/rag/web](src/rag/web), no build step; it follows the system light or dark theme and works on a phone). `POST /ask` returns the status, answer, confidence, claims with their verified quotes (each with its source passage and where the quote sits in it), the retrieved passages, the relevance gate's decision and threshold, whether a model was called, latency and tokens. `GET/POST/DELETE /documents` manage the visitor's own uploaded file: `POST` takes the file's bytes as the body with its name in an `X-Filename` header, indexes it in the background and reports progress through `GET`, and `POST /ask` takes `"source": "mine"` to ask it instead of the sample docs. `GET /corpus` describes what is indexed (the UI's sidebar and example questions come from it). `GET /health` is a liveness check. Accounts and daily limits protect the LLM quota: `/ask` needs a signed-in or guest session (`POST /auth/signup`, `/auth/login`, `/auth/guest`, `/auth/logout`, `GET /auth/me`; see [src/rag/auth.py](src/rag/auth.py)). Passwords are hashed with scrypt, sessions are signed HttpOnly cookies, failed sign-ins are throttled, and each person has a daily question limit (guests 5, accounts 30; a failed question is refunded). Set `SESSION_SECRET` to a long random value so sessions survive restarts, and `COOKIE_SECURE=1` when serving over HTTPS; behind a proxy run uvicorn with `--proxy-headers`. New accounts must confirm their email address: signing up creates a pending account and emails a one-time link (valid 24 hours; asking again or signing up again retires the old link), so a mistyped or invented address never becomes an account. Sending needs an SMTP account (`SMTP_*` and `PUBLIC_URL` in `.env.example`); without one the link is printed in the server's terminal, which is only for trying it locally. Guests have no email at all. There is no password reset or sign-in with Google, on purpose. For local use without accounts, set `AUTH_ENABLED=0`. Scripts can skip the session by sending `X-API-Key` when `RAG_API_KEY` is set. The image is about 2.8 GB (PyTorch and the ML libraries); the embedding model is baked in so the first request doesn't download it.

@@ -1,5 +1,7 @@
 # SPEC: RAG Agent with Citation Grounding (Project 02)
 
+> **Status note:** this is the original planning document, written before the build. The project grew past it: the web UI, accounts with daily limits, uploading your own document and the Docker image were all added. The [README](README.md) describes what exists and what was measured.
+
 > Goal: prevent hallucinations. Answer questions only from a document corpus, cite the exact source for every claim, and say "I don't know" when the documents don't support an answer.
 
 **Timeline:** 1 weekend (about 12-14 focused hours), built in parallel with Project 01
